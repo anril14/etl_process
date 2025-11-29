@@ -205,3 +205,23 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# IDE
+.idea/
+*.iws
+*.iml
+*.ipr
+misc.xml
+modules.xml
+vcs.xml
+workspace.xml
+
+# Python
+/.venv
+*.pyc
+*.pyo
+*.pyd
+
+# OS
+.DS_Store
+Thumbs.db
