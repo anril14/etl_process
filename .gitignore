@@ -225,3 +225,13 @@ workspace.xml
 # OS
 .DS_Store
 Thumbs.db
+
+# Environment
+.env.*
+
+# Data
+data/
+logs/
+
+# Python
+.venv/
