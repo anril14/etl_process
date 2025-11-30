@@ -1,0 +1,34 @@
+create schema if not exists stg;
+create schema if not exists ods;
+create schema if not exists dm;
+
+comment on schema stg is 'Staging';
+comment on schema ods is 'Operational data store';
+comment on schema dm is 'Data marts';
+
+create table if not exists stg.weather_data (
+	id_measure serial primary key,
+	longitude numeric(5, 2),
+	latitude numeric(5, 2),
+	type varchar(20),
+	"desc" varchar(100),
+	temperature numeric(5, 2),
+	feels_like numeric(5, 2),
+	pressure smallint,
+	humidity smallint,
+	sea_level smallint,
+	ground_level smallint,
+	visibility integer,
+	wind_speed smallint,
+	wind_deg smallint,
+	cloudiness smallint,
+	dt timestamp,
+	sunrise timestamp,
+	sunset timestamp,
+	country varchar(3),
+	timezone integer,
+	city varchar(50),
+	loaded_at timestamp default current_timestamp,
+	source_system varchar(20) default 'openweather'
+	);
+
