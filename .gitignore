@@ -235,3 +235,4 @@ logs/
 
 # Python
 .venv/
+/config/
