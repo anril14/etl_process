@@ -1,7 +1,7 @@
 import io
 import json
 import os
-
+import psycopg2
 from airflow.sdk.bases.operator import AirflowException
 from dotenv import dotenv_values
 from airflow import DAG
@@ -39,12 +39,14 @@ def _save_raw_to_minio(ti):
         )
         bucket_name = str(os.getenv('MINIO_BUCKET_NAME'))
 
+        # create bucket if no one
         if not client.bucket_exists(bucket_name):
             client.make_bucket(bucket_name)
             print(f'Bucket {bucket_name} is created, saving file...')
         else:
             print(f'Bucket {bucket_name} is already created, saving file...')
 
+        # file name from date of measure
         city = str(data['name']).lower()
         unix = str(data['dt'])
         date = datetime.fromtimestamp(data['dt'])
@@ -65,16 +67,46 @@ def _save_raw_to_minio(ti):
             f'created {result.object_name} object; etag: {result.etag}, '
             f'version-id: {result.version_id}',
         )
-        return f'Successfully saved to minio: {result.object_name}'
+        return result.object_name, data
     except Exception as e:
         print(e)
         raise AirflowException(e)
 
 
-def _validate_data(ti):
-    # TODO First-stage validate
-    data = ti.xcom_pull(task_ids='get_weather')
-    return data
+# TODO До конца отладить сохранение в stg
+def _save_to_stg(ti):
+    raw_path, data = ti.xcom_pull(task_ids='save_raw_to_minio')
+    if not data['dt'] or not data['name']:
+        raise ValueError('Not enough data in response')
+    dt = data['dt']
+    city = data['name']
+    conn = None
+    try:
+        conn = psycopg2.connect(
+            host=os.getenv('POSTGRES_DWH_HOST'),
+            port=os.getenv('POSTGRES_DWH_PORT'),
+            dbname=os.getenv('POSTGRES_DWH_DB'),
+            user=os.getenv('POSTGRES_DWH_USER'),
+            password=os.getenv('POSTGRES_DWH_PASSWORD'),
+        )
+        with conn.cursor() as cur:
+            cur.execute(
+                '''
+                insert into stg.weather_data (raw_path, dt, city) 
+                values (%s, %s, %s)
+                ''', (raw_path, dt, city))
+            result = cur.fetchone()
+        conn.commit()
+        print(f'executed {result}')
+    except Exception as e:
+        conn.rollback()
+        print(e)
+        raise ConnectionError
+    finally:
+        if conn:
+            conn.close()
+        if cur:
+            cur.close()
 
 
 # dag initialization
@@ -92,5 +124,9 @@ with DAG('get_weather_data', start_date=datetime(2024, 12, 1),
         task_id='save_raw_to_minio',
         python_callable=_save_raw_to_minio
     )
+    save_to_stg = PythonOperator(
+        task_id='save_to_stg',
+        python_callable=_save_to_stg
+    )
 
-    get_request >> save_raw_to_minio
+    get_request >> save_raw_to_minio >> save_to_stg
