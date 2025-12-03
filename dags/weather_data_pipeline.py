@@ -73,44 +73,36 @@ def _save_raw_to_minio(ti):
         raise AirflowException(e)
 
 
-# TODO До конца отладить сохранение в stg
 def _save_to_stg(ti):
     raw_path, data = ti.xcom_pull(task_ids='save_raw_to_minio')
     if not data['dt'] or not data['name']:
         raise ValueError('Not enough data in response')
     dt = data['dt']
     city = data['name']
-    conn = None
-    try:
-        conn = psycopg2.connect(
+    with psycopg2.connect(
             host=os.getenv('POSTGRES_DWH_HOST'),
             port=os.getenv('POSTGRES_DWH_PORT'),
             dbname=os.getenv('POSTGRES_DWH_DB'),
             user=os.getenv('POSTGRES_DWH_USER'),
             password=os.getenv('POSTGRES_DWH_PASSWORD'),
-        )
-        with conn.cursor() as cur:
-            cur.execute(
-                '''
-                insert into stg.weather_data (raw_path, dt, city) 
-                values (%s, %s, %s)
-                ''', (raw_path, dt, city))
-            result = cur.fetchone()
+    ) as conn:
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    '''
+                    insert into stg.weather_data (raw_path, dt, city) 
+                    values (%s, %s, %s)
+                    ''', (raw_path, dt, city))
+        except Exception as e:
+            print(e)
+            raise ConnectionError
         conn.commit()
-        print(f'executed {result}')
-    except Exception as e:
-        conn.rollback()
-        print(e)
-        raise ConnectionError
-    finally:
-        if conn:
-            conn.close()
-        if cur:
-            cur.close()
+        print(f'executed')
 
+# TODO Валидация и трансфер данных в ODS
 
 # dag initialization
-with DAG('get_weather_data', start_date=datetime(2024, 12, 1),
+with DAG('weather_data_pipeline', start_date=datetime(2024, 12, 1),
          schedule='@daily', catchup=False) as dag:
     get_request = PythonOperator(
         task_id='get_request',
