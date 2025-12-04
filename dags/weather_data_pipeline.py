@@ -11,6 +11,8 @@ from random import randint
 from minio import Minio
 import requests
 
+# TODO Добавить контексты в DAG'и
+# TODO Поменять датасет на более наполненный измерениями по датам
 
 # get request to openweather api
 def _get_request(lat, lon, api_key: str):
