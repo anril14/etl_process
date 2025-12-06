@@ -1,12 +1,12 @@
-create table if not exists stg.weather_data (
+create table if not exists stg.taxi_data (
 	id_measure serial primary key,
 	raw_path varchar(255) not null,
+	covered_dates varchar(50) not null,
 	load_time timestamp default current_timestamp,
-	dt bigint not null,
-	city varchar(100) not null,
-	source varchar(100) default 'api.openweathermap.org'
-
---	constraint unique_dt_city unique (dt, city)
+	source varchar(100) default 'https://d37ci6vzurychx.cloudfront.net',
+	processed boolean default false,
+	processed_time timestamp default null,
+	file_size bigint not null
 	);
 
---create index if not exists idx_stg_dt_city on stg.weather_data (dt, city)
+create index if not exists idx_stg_сovered_dates on stg.taxi_data (covered_dates);

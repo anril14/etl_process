@@ -4,6 +4,8 @@ from airflow import DAG
 from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime
 
+from airflow.sdk import dag, task, get_current_context
+
 
 # migrations
 def _run_migrations():
@@ -17,14 +19,18 @@ def _run_migrations():
     comment on schema dm is 'Data marts';
     '''
     create_stg_tables = '''
-    create table if not exists stg.weather_data (
+    create table if not exists stg.taxi_data (
 	id_measure serial primary key,
 	raw_path varchar(255) not null,
+	covered_dates varchar(50) not null,
 	load_time timestamp default current_timestamp,
-	dt bigint not null,
-	city varchar(100) not null,
-	source varchar(100) default 'api.openweathermap.org'
+	source varchar(100) default 'https://d37ci6vzurychx.cloudfront.net',
+	processed boolean default false,
+	processed_time timestamp default null,
+	file_size bigint not null
 	);
+	
+    create index if not exists idx_stg_сovered_dates on stg.taxi_data (covered_dates);
     '''
 
     # TODO create_ods_tables
@@ -37,7 +43,7 @@ def _run_migrations():
             dbname=os.getenv('POSTGRES_DWH_DB'),
             user=os.getenv('POSTGRES_DWH_USER'),
             password=os.getenv('POSTGRES_DWH_PASSWORD'),
-        ) as conn:
+    ) as conn:
         for script in migrations:
             try:
                 with conn.cursor() as cur:
@@ -48,10 +54,16 @@ def _run_migrations():
             conn.commit()
             print(f'executed')
 
+
 # dag initialization
-with DAG('sql_migrations', start_date=datetime(2024, 12, 1),
-         schedule=None, catchup=False) as dag:
-    run_migrations = PythonOperator(
-        task_id='run_migrations',
-        python_callable=_run_migrations
-    )
+@dag(dag_id='sql_migrations', start_date=datetime(2024, 12, 1),
+     schedule=None, catchup=False)
+def sql_migrations():
+    @task
+    def run_migrations():
+        _run_migrations()
+
+    run_migrations()
+
+
+sql_migrations()

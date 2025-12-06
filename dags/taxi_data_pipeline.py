@@ -6,9 +6,7 @@ import pandas as pd
 import pyarrow.parquet
 from airflow.sdk.bases.operator import AirflowException
 from dotenv import dotenv_values
-from airflow import DAG
-from airflow.sdk import dag, task
-from airflow.operators.python import get_current_context
+from airflow.sdk import dag, task, get_current_context
 from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime
 from random import randint
@@ -16,14 +14,14 @@ from minio import Minio
 import requests
 
 
-# TODO Добавить контексты в DAG'и
-# TODO Поменять датасет на более наполненный измерениями по датам
-
 # saving raw parquet to minio bucket
 def _save_raw_to_minio(date):
     try:
-        r = requests.get(url=f'https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_'
-                             f'{date.year}-{date.month:02d}.parquet')
+        url = (f'https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_'
+               f'{date.year}-{date.month:02d}.parquet')
+        print(url)
+        r = requests.get(url=url)
+        print(len(r.content))
     except Exception:
         raise Exception('Get request error')
 
@@ -47,13 +45,14 @@ def _save_raw_to_minio(date):
         result = client.put_object(bucket_name=bucket_name,
                                    object_name=f'raw/taxi/{date.year}/{date.month:02d}/yellow_tripdata.parquet',
                                    data=io.BytesIO(r.content),
-                                   content_type='application',
+                                   content_type='application/octet-stream',
                                    length=len(r.content),
                                    )
         print(
             f'created {result.object_name} object; etag: {result.etag}, '
             f'version-id: {result.version_id}',
         )
+
         return result.object_name
     except Exception as e:
         print(e)
@@ -99,7 +98,7 @@ def _save_raw_to_minio(date):
 def taxi_data_pipeline():
     @task
     def save_raw_to_minio():
-        date = get_current_context()['logical_date']
+        date = get_current_context()['dag'].start_date
         _save_raw_to_minio(date)
 
     save_raw_to_minio()
