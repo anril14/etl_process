@@ -26,6 +26,9 @@ def _save_raw_to_minio(date):
         raise Exception('Get request error')
 
     try:
+        # get size in bytes
+        bytes_size = len(r.content)
+
         print(os.getenv('MINIO_ENDPOINT'))
         client = Minio(
             endpoint=str(os.getenv('MINIO_ENDPOINT')),
@@ -46,44 +49,41 @@ def _save_raw_to_minio(date):
                                    object_name=f'raw/taxi/{date.year}/{date.month:02d}/yellow_tripdata.parquet',
                                    data=io.BytesIO(r.content),
                                    content_type='application/octet-stream',
-                                   length=len(r.content),
+                                   length=bytes_size,
                                    )
+        # logs
         print(
             f'created {result.object_name} object; etag: {result.etag}, '
             f'version-id: {result.version_id}',
         )
-
-        return result.object_name
+        covered_dates = f'{date.year}_{date.month}'
+        # returning path, covered dates, size in bytes
+        return result.object_name, covered_dates, bytes_size
     except Exception as e:
         print(e)
         raise AirflowException(e)
 
 
-# def _save_to_stg(ti):
-#     raw_path, data = ti.xcom_pull(task_ids='save_raw_to_minio')
-#     if not data['dt'] or not data['name']:
-#         raise ValueError('Not enough data in response')
-#     dt = data['dt']
-#     city = data['name']
-#     with psycopg2.connect(
-#             host=os.getenv('POSTGRES_DWH_HOST'),
-#             port=os.getenv('POSTGRES_DWH_PORT'),
-#             dbname=os.getenv('POSTGRES_DWH_DB'),
-#             user=os.getenv('POSTGRES_DWH_USER'),
-#             password=os.getenv('POSTGRES_DWH_PASSWORD'),
-#     ) as conn:
-#         try:
-#             with conn.cursor() as cur:
-#                 cur.execute(
-#                     '''
-#                     insert into stg.weather_data (raw_path, dt, city)
-#                     values (%s, %s, %s)
-#                     ''', (raw_path, dt, city))
-#         except Exception as e:
-#             print(e)
-#             raise ConnectionError
-#         conn.commit()
-#         print(f'executed')
+def _stg_update(raw_path, covered_dates, bytes_size):
+    with psycopg2.connect(
+            host=os.getenv('POSTGRES_DWH_HOST'),
+            port=os.getenv('POSTGRES_DWH_PORT'),
+            dbname=os.getenv('POSTGRES_DWH_DB'),
+            user=os.getenv('POSTGRES_DWH_USER'),
+            password=os.getenv('POSTGRES_DWH_PASSWORD'),
+    ) as conn:
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    '''
+                    insert into stg.taxi_data (raw_path, covered_dates, file_size)
+                    values (%s, %s, %s)
+                    ''', (raw_path, covered_dates, bytes_size))
+        except Exception as e:
+            print(e)
+            raise ConnectionError
+        conn.commit()
+        print(f'executed')
 
 
 # TODO Валидация и трансфер данных в ODS
@@ -99,9 +99,15 @@ def taxi_data_pipeline():
     @task
     def save_raw_to_minio():
         date = get_current_context()['dag'].start_date
-        _save_raw_to_minio(date)
+        return _save_raw_to_minio(date)
 
-    save_raw_to_minio()
+    @task
+    def stg_update(minio_data):
+        raw_path, covered_dates, bytes_size = minio_data
+        _stg_update(raw_path, covered_dates, bytes_size)
+
+    minio_data = save_raw_to_minio()
+    stg_update(minio_data)
 
 
 taxi_data_pipeline()
