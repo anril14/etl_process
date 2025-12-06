@@ -11,13 +11,10 @@ from random import randint
 from minio import Minio
 import requests
 
-# TODO Добавить контексты в DAG'и
-# TODO Поменять датасет на более наполненный измерениями по датам
-
 # get request to openweather api
-def _get_request(lat, lon, api_key: str):
+def _get_request(**kwargs):
     try:
-        r = requests.get(url=f'https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={api_key}')
+        r = requests.get(url=f'https://api.openweathermap.org/data/2.5/weather?lat={kwargs['lat']}&lon={kwargs['lon']}&appid={kwargs['api_key']}')
         return r.json()
     except Exception:
         raise Exception('Get request error')
@@ -59,7 +56,7 @@ def _save_raw_to_minio(ti):
         minute = date.minute
 
         result = client.put_object(bucket_name=bucket_name,
-                                   object_name=f'raw/{city}/{year}/{month:02d}/'
+                                   object_name=f'raw/weather/{city}/{year}/{month:02d}/'
                                                f'{day:02d}/{hour:02d}_{minute:02d}_{unix}.json',
                                    data=io.BytesIO(data_bytes),
                                    content_type='application/json',
@@ -105,7 +102,7 @@ def _save_to_stg(ti):
 
 # dag initialization
 with DAG('weather_data_pipeline', start_date=datetime(2024, 12, 1),
-         schedule='@daily', catchup=False) as dag:
+         schedule=None, catchup=False) as dag:
     get_request = PythonOperator(
         task_id='get_request',
         python_callable=_get_request,
