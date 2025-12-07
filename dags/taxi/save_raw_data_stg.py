@@ -6,11 +6,11 @@ import pandas as pd
 import pyarrow.parquet
 from airflow.sdk.bases.operator import AirflowException
 from dotenv import dotenv_values
-from airflow.sdk import dag, task, get_current_context
-from airflow.providers.standard.operators.python import PythonOperator
+from airflow.sdk import dag, task, get_current_context, Variable
 from datetime import datetime
 from random import randint
 from minio import Minio
+from utils.get_env import *
 import requests
 
 
@@ -29,14 +29,14 @@ def _save_raw_to_minio(date):
         # get size in bytes
         bytes_size = len(r.content)
 
-        print(os.getenv('MINIO_ENDPOINT'))
+        print(MINIO_ENDPOINT)
         client = Minio(
-            endpoint=str(os.getenv('MINIO_ENDPOINT')),
-            access_key=str(os.getenv('MINIO_ACCESS_KEY')),
-            secret_key=str(os.getenv('MINIO_SECRET_KEY')),
+            endpoint=MINIO_ENDPOINT,
+            access_key=MINIO_ACCESS_KEY,
+            secret_key=MINIO_SECRET_KEY,
             secure=False
         )
-        bucket_name = str(os.getenv('MINIO_BUCKET_NAME'))
+        bucket_name = MINIO_BUCKET_NAME
 
         # create bucket if no one
         if not client.bucket_exists(bucket_name):
@@ -53,10 +53,10 @@ def _save_raw_to_minio(date):
                                    )
         # logs
         print(
-            f'created {result.object_name} object; etag: {result.etag}, '
-            f'version-id: {result.version_id}',
+            f'Created {result.object_name} object; Etag: {result.etag}, '
+            f'Version-id: {result.version_id}',
         )
-        covered_dates = f'{date.year}_{date.month}'
+        covered_dates = f'{date.year}_{date.month:02d}'
         # returning path, covered dates, size in bytes
         return result.object_name, covered_dates, bytes_size
     except Exception as e:
@@ -65,37 +65,40 @@ def _save_raw_to_minio(date):
 
 
 def _stg_update(raw_path, covered_dates, bytes_size):
-    with psycopg2.connect(
-            host=os.getenv('POSTGRES_DWH_HOST'),
-            port=os.getenv('POSTGRES_DWH_PORT'),
-            dbname=os.getenv('POSTGRES_DWH_DB'),
-            user=os.getenv('POSTGRES_DWH_USER'),
-            password=os.getenv('POSTGRES_DWH_PASSWORD'),
-    ) as conn:
-        try:
+    try:
+        with psycopg2.connect(
+                host=POSTGRES_DWH_HOST,
+                port=POSTGRES_DWH_PORT,
+                dbname=POSTGRES_DWH_DB,
+                user=POSTGRES_DWH_USER,
+                password=POSTGRES_DWH_PASSWORD,
+        ) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     '''
                     insert into stg.taxi_data (raw_path, covered_dates, file_size)
                     values (%s, %s, %s)
                     ''', (raw_path, covered_dates, bytes_size))
-        except Exception as e:
-            print(e)
-            raise ConnectionError
-        conn.commit()
-        print(f'executed')
+            conn.commit()
+            print(f'Executed\n')
+        return raw_path
+    except psycopg2.Error as err:
+        print(f'psycopg2 error: {err}')
+        return None
 
-
-# TODO Валидация и трансфер данных в ODS
 
 # dag initialization
 @dag(
-    dag_id='taxi_data_pipeline',
-    start_date=datetime(2024, 12, 1),
+    dag_id='save_raw_data',
+    start_date=datetime(
+        int(Variable.get('year')),
+        int(Variable.get('month')),
+        int(Variable.get('day'))
+    ),
     schedule=None,
     catchup=False
 )
-def taxi_data_pipeline():
+def save_raw_data():
     @task
     def save_raw_to_minio():
         date = get_current_context()['dag'].start_date
@@ -110,4 +113,4 @@ def taxi_data_pipeline():
     stg_update(minio_data)
 
 
-taxi_data_pipeline()
+save_raw_data()
