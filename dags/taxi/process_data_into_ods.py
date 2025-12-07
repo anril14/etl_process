@@ -5,6 +5,7 @@ import psycopg2
 import pandas as pd
 import pyarrow.parquet
 from dotenv import dotenv_values
+from airflow.sdk.bases.operator import AirflowException
 from airflow.sdk import dag, task, get_current_context, Variable
 from datetime import datetime
 from minio import Minio
@@ -30,31 +31,41 @@ def _check_instance(date):
                     where covered_dates = %s
                         and processed = false
                     limit 1
-                    ''', (covered_date,))  # TODO: Убрать LIMIT 1
+                    ''', (covered_date,))
+                # TODO: Убрать LIMIT 1 и вызывать ошибку когда более 1 результата (сейчас для удобства разработки)
                 result = cur.fetchall()
                 if len(result) > 1:
                     print(f'Warning: more than 1 non-processed records for \'{covered_date}\'')
             conn.commit()
             print(f'Executed\n')
-            return result[0]
+            # [][] because returns tuple inside list
+            return result[0][0]
     except psycopg2.Error as err:
         print(f'psycopg2 error: {err}')
         return None
 
 
-def _get_raw_from_minio(object_name):
-    client = Minio(
-        endpoint=str(MINIO_ENDPOINT),
-        access_key=str(MINIO_ACCESS_KEY),
-        secret_key=str(MINIO_SECRET_KEY),
-        secure=False
-    )
+def _process_data(object_name):
+    try:
+        client = Minio(
+            endpoint=MINIO_ENDPOINT,
+            access_key=MINIO_ACCESS_KEY,
+            secret_key=MINIO_SECRET_KEY,
+            secure=False
+        )
 
-    with client.get_object(
-            bucket_name=MINIO_BUCKET_NAME,
-            object_name=object_name,
-    ) as response:
-        print('Response')
+        # get data of an object.
+        with client.get_object(
+                bucket_name=MINIO_BUCKET_NAME,
+                object_name=object_name,
+        ) as response:
+            print(len(response.data))
+
+    # TODO Логика обработки
+
+    except Exception as e:
+        print(e)
+        raise AirflowException(e)
 
 
 # dag initialization
@@ -72,21 +83,14 @@ def process_data_into_ods():
     @task
     def check_instance():
         date = get_current_context()['dag'].start_date
-        _check_instance(date)
+        return _check_instance(date)
 
     @task
-    def get_raw_from_minio():
-        _get_raw_from_minio()
+    def process_data(object_name):
+        _process_data(object_name)
 
-    @task
-    def validate_data():
-        _validate_data()
-
-    @task
-    def insert_into_ods():
-        _insert_into_ods()
-
-    check_instance()
+    object_name = check_instance()
+    get_raw_data_from_minio(object_name)
 
 
 process_data_into_ods()

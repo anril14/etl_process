@@ -15,7 +15,7 @@ import requests
 
 
 # saving raw parquet to minio bucket
-def _save_raw_to_minio(date):
+def _save_raw_data_to_minio(date):
     try:
         url = (f'https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_'
                f'{date.year}-{date.month:02d}.parquet')
@@ -64,7 +64,7 @@ def _save_raw_to_minio(date):
         raise AirflowException(e)
 
 
-def _stg_update(raw_path, covered_dates, bytes_size):
+def _update_stg(raw_path, covered_dates, bytes_size):
     try:
         with psycopg2.connect(
                 host=POSTGRES_DWH_HOST,
@@ -100,17 +100,17 @@ def _stg_update(raw_path, covered_dates, bytes_size):
 )
 def save_raw_data():
     @task
-    def save_raw_to_minio():
+    def save_raw_data_to_minio():
         date = get_current_context()['dag'].start_date
-        return _save_raw_to_minio(date)
+        return _save_raw_data_to_minio(date)
 
     @task
-    def stg_update(minio_data):
+    def update_stg(minio_data):
         raw_path, covered_dates, bytes_size = minio_data
-        _stg_update(raw_path, covered_dates, bytes_size)
+        _update_stg(raw_path, covered_dates, bytes_size)
 
-    minio_data = save_raw_to_minio()
-    stg_update(minio_data)
+    minio_data = save_raw_data_to_minio()
+    update_stg(minio_data)
 
 
 save_raw_data()
