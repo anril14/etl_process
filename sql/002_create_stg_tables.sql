@@ -9,4 +9,4 @@ create table if not exists stg.taxi_data (
 	file_size bigint not null
 	);
 
-create index if not exists idx_stg_сovered_dates on stg.taxi_data (covered_dates);
+-- TODO: Подумать над необходимостью "Полноценного" stg-слоя, или попробовать реализовать только т.н. "registry"

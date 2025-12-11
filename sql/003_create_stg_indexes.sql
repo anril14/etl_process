@@ -1,0 +1,1 @@
+create index if not exists idx_stg_сovered_dates on stg.taxi_data (covered_dates);

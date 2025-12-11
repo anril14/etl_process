@@ -90,7 +90,7 @@ def process_data_into_ods():
         _process_data(object_name)
 
     object_name = check_instance()
-    get_raw_data_from_minio(object_name)
+    process_data(object_name)
 
 
 process_data_into_ods()
