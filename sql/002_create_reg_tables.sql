@@ -1,4 +1,4 @@
-create table if not exists stg.taxi_data (
+create table if not exists reg.taxi_data (
 	id_measure serial primary key,
 	raw_path varchar(255) not null,
 	covered_dates varchar(50) not null,

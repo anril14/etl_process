@@ -59,12 +59,12 @@ def _save_raw_data_to_minio(date):
         covered_dates = f'{date.year}_{date.month:02d}'
         # returning path, covered dates, size in bytes
         return result.object_name, covered_dates, bytes_size
-    except Exception as e:
-        print(e)
-        raise AirflowException(e)
+    except Exception as err:
+        print(err)
+        raise AirflowException(err)
 
 
-def _update_stg(raw_path, covered_dates, bytes_size):
+def _update_reg(raw_path, covered_dates, bytes_size):
     try:
         with psycopg2.connect(
                 host=POSTGRES_DWH_HOST,
@@ -76,7 +76,7 @@ def _update_stg(raw_path, covered_dates, bytes_size):
             with conn.cursor() as cur:
                 cur.execute(
                     '''
-                    insert into stg.taxi_data (raw_path, covered_dates, file_size)
+                    insert into reg.taxi_data (raw_path, covered_dates, file_size)
                     values (%s, %s, %s)
                     ''', (raw_path, covered_dates, bytes_size))
             conn.commit()
@@ -105,12 +105,12 @@ def save_raw_data():
         return _save_raw_data_to_minio(date)
 
     @task
-    def update_stg(minio_data):
+    def update_reg(minio_data):
         raw_path, covered_dates, bytes_size = minio_data
-        _update_stg(raw_path, covered_dates, bytes_size)
+        _update_reg(raw_path, covered_dates, bytes_size)
 
     minio_data = save_raw_data_to_minio()
-    update_stg(minio_data)
+    update_reg(minio_data)
 
 
 save_raw_data()
