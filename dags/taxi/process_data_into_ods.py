@@ -11,9 +11,7 @@ from airflow.sdk import dag, task, get_current_context, Variable
 from datetime import datetime
 from minio import Minio
 from utils.get_env import *
-from utils.sql import *
-
-from utils.sql import get_duckdb_table_sql
+from utils.get_sql import *
 
 
 def _check_instance(date):
@@ -65,24 +63,111 @@ def _process_data(object_name, year):
                 bucket_name=MINIO_BUCKET_NAME,
                 object_name=object_name,
         ) as response:
-            print(len(response.data))
+            print(f'Bytes length: {len(response.data)}')
 
             df = pd.read_parquet(io.BytesIO(response.data))
+            # TODO Small dataset
+            df = df.head(20_000)
 
+            print(f'Original column names:{df.columns}')
+            from utils.columns import ODS_COLUMN_MAPPING
+            df = df.rename(columns=ODS_COLUMN_MAPPING)
+            print(f'Refactored column names:{df.columns}')
+
+            # validate
             with duckdb.connect(database=':memory') as con:
-                sql = get_duckdb_table_sql(year)
+                init_staging_sql = get_duckdb_temp_table_sql(year, 'staging')
                 con.execute("drop table if exists staging")
-                con.execute(sql)
+                con.execute(init_staging_sql)
+
+                init_staging_validate_sql = get_duckdb_temp_validate_table_sql(year, 'staging_validate')
+                con.execute("drop table if exists staging_validate")
+                con.execute(init_staging_validate_sql)
 
                 con.register('df_view', df)
                 con.execute(f'''insert into staging select * from df_view''')
 
                 con.execute('''select count(*) from staging''')
-
                 # print count
-                print(con.fetchall())
+                print(f'Count of records:{con.fetchall()[0][0]}')
 
+                con.execute('''insert into staging_validate
+                select * 
+                from staging
+                where
+                    try_cast(vendor_id as smallint) is not null and
+                    try_cast(tpep_pickup as timestamp) is not null and
+                    try_cast(tpep_dropoff as timestamp) is not null and
+                    try_cast(passenger_count as smallint) is not null and
+                    try_cast(trip_distance as numeric(12,2)) is not null and
+                    try_cast(ratecode_id as smallint) is not null and
+                    store_and_forward in ('N', 'Y', 'n', 'y') and
+                    try_cast(pu_location_id as smallint) is not null and
+                    try_cast(do_location_id as smallint) is not null and
+                    try_cast(payment_type as smallint) is not null and
+                    try_cast(fare as numeric(12,2)) is not null and
+                    try_cast(extras as numeric(12,2)) is not null and
+                    try_cast(mta_tax as numeric(12,2)) is not null and
+                    try_cast(tip as numeric(12,2)) is not null and
+                    try_cast(tolls as numeric(12,2)) is not null and
+                    try_cast(improvement as numeric(12,2)) is not null and
+                    try_cast(total as numeric(12,2)) is not null and
+                    try_cast(congestion as numeric(12,2)) is not null and
+                    try_cast(airport_fee as numeric(12,2)) is not null
+                ''')
+                con.execute('''select count(*) from staging_validate''')
+                print(f'Count of validated records:{con.fetchall()[0][0]}')
 
+                df_valid = con.execute('''select vendor_id,
+                    tpep_pickup,
+                    tpep_dropoff,
+                    passenger_count,
+                    trip_distance,
+                    ratecode_id,
+                    case 
+                        when store_and_forward in ('N', 'n') then false 
+                        else true 
+                    end as store_and_forward,
+                    pu_location_id,
+                    do_location_id,
+                    payment_type,
+                    fare,
+                    extras,
+                    mta_tax,
+                    tip,
+                    tolls,
+                    improvement,
+                    total,
+                    congestion,
+                    airport_fee
+                from staging_validate
+                where 
+                    vendor_id in (1, 2, 6, 7) and
+                    ratecode_id in (1, 2, 3, 4, 5, 6, 99) and
+                    payment_type in (0, 1, 2, 3, 4, 5, 6)
+                ''').fetchdf()
+
+        # load into ods
+        from sqlalchemy import create_engine
+        engine = create_engine(
+            f'postgresql+psycopg2://{POSTGRES_DWH_USER}:'
+            f'{POSTGRES_DWH_PASSWORD}@'
+            f'{POSTGRES_DWH_HOST}:'
+            f'{POSTGRES_DWH_PORT}/'
+            f'{POSTGRES_DWH_DB}'
+        )
+        print('Inserting into ods...')
+        with engine.connect() as conn:
+            df_valid.to_sql(
+                name='taxi_data',
+                schema='ods',
+                con=conn,
+                if_exists='append',
+                index=False,
+                method='multi',
+                chunksize=2_000
+            )
+        print('Executed')
     except Exception as err:
         print(err)
         raise AirflowException(err)

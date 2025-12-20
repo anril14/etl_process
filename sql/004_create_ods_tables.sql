@@ -34,6 +34,6 @@ create table if not exists ods.taxi_data (
 	total numeric(12,2) not null,
 	congestion numeric(12,2) not null,
 	airport_fee numeric(12,2) not null default 0.0,
-	cbd_congestion_fee numeric(12,2) not null default 0.0,
+	cbd_congestion_fee numeric(12,2) default 0.0,
 	source_system varchar(50) default 'TLC Taxi'
 	);
