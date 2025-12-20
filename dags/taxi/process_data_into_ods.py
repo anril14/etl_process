@@ -1,6 +1,8 @@
 import io
 import json
 import os
+
+import duckdb
 import psycopg2
 import pyarrow.parquet
 from dotenv import dotenv_values
@@ -9,6 +11,9 @@ from airflow.sdk import dag, task, get_current_context, Variable
 from datetime import datetime
 from minio import Minio
 from utils.get_env import *
+from utils.sql import *
+
+from utils.sql import get_duckdb_table_sql
 
 
 def _check_instance(date):
@@ -63,55 +68,19 @@ def _process_data(object_name, year):
             print(len(response.data))
 
             df = pd.read_parquet(io.BytesIO(response.data))
-            # df = df.head(1000)
-            print(df.head())
 
-            from utils.columns import ODS_COLUMN_MAPPING
-            df = df.rename(columns=ODS_COLUMN_MAPPING)
+            with duckdb.connect(database=':memory') as con:
+                sql = get_duckdb_table_sql(year)
+                con.execute("drop table if exists staging")
+                con.execute(sql)
 
-            print(f'Starts buffering...')
-            buffer = io.StringIO()
-            df.to_csv(buffer,
-                      sep='\t',
-                      header=False,
-                      index=False,
-                      na_rep='\\N'
-                      )
-            buffer.seek(0)
-            print(f'Finished buffering')
+                con.register('df_view', df)
+                con.execute(f'''insert into staging select * from df_view''')
 
-            with psycopg2.connect(
-                    host=POSTGRES_DWH_HOST,
-                    port=POSTGRES_DWH_PORT,
-                    dbname=POSTGRES_DWH_DB,
-                    user=POSTGRES_DWH_USER,
-                    password=POSTGRES_DWH_PASSWORD,
-            ) as conn:
-                from utils.sql import get_temp_table_sql
-                sql = get_temp_table_sql(year)
-                print(sql)
-                with conn.cursor() as cur:
-                    cur.execute(sql)
+                con.execute('''select count(*) from staging''')
 
-                    from utils.columns import get_ods_columns
-                    ods_columns = get_ods_columns(year)
-                    print(f'Created temp table')
-                    cur.copy_from(file=buffer,
-                                  table='staging',
-                                  columns=ods_columns,
-                                  sep='\t',
-                                  null='')
-                    print(f'Loaded {len(df)} into staging')
-
-                    cur.execute(
-                        '''
-                        select count(*) from staging;
-                        '''
-                    )
-                    print(f'{cur.fetchone()[0]}')
-
-                conn.commit()
-                print(f'Executed\n')
+                # print count
+                print(con.fetchall())
 
 
     except Exception as err:
