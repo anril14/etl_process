@@ -50,57 +50,132 @@ def get_duckdb_temp_table_sql(year: str, table_name: str):
             '''
     return sql
 
-def get_duckdb_temp_validate_table_sql(year: str, table_name: str):
-    if int(year) >= 2025:
-        sql = f'''
-            create table {table_name} (
-                vendor_id smallint not null,
-                tpep_pickup timestamp not null,
-                tpep_dropoff timestamp not null,
-                passenger_count smallint not null,
-                trip_distance numeric(12,2) not null,
-                ratecode_id smallint default 99,
-                store_and_forward boolean not null,
-                pu_location_id smallint,
-                do_location_id smallint,
-                payment_type smallint not null,
-                fare numeric(12,2) not null,
-                extras numeric(12,2) not null,
-                mta_tax numeric(12,2) not null,
-                tip numeric(12,2) not null,
-                tolls numeric(12,2) not null,
-                improvement numeric(12,2) not null,
-                total numeric(12,2) not null,
-                congestion numeric(12,2) not null,
-                airport_fee numeric(12,2) default 0.0,
-                cbd_congestion_fee numeric(12,2) default 0.0
-            )
-            '''
-    else:
-        sql = f'''
-            create table {table_name} (
-                vendor_id smallint not null,
-                tpep_pickup timestamp not null,
-                tpep_dropoff timestamp not null,
-                passenger_count smallint not null,
-                trip_distance numeric(12,2) not null,
-                ratecode_id smallint default 99,
-                store_and_forward boolean not null,
-                pu_location_id smallint,
-                do_location_id smallint,
-                payment_type smallint not null,
-                fare numeric(12,2) not null,
-                extras numeric(12,2) not null,
-                mta_tax numeric(12,2) not null,
-                tip numeric(12,2) not null,
-                tolls numeric(12,2) not null,
-                improvement numeric(12,2) not null,
-                total numeric(12,2) not null,
-                congestion numeric(12,2) not null,
-                airport_fee numeric(12,2) default 0.0
-            )
-            '''
+
+def get_duckdb_validate_table_sql(table_name: str):
+    sql = f'''
+        create table {table_name} (
+            vendor_id smallint not null,
+            tpep_pickup timestamp not null,
+            tpep_dropoff timestamp not null,
+            passenger_count smallint not null,
+            trip_distance numeric(12,2) not null,
+            ratecode_id smallint default 99,
+            store_and_forward boolean not null,
+            pu_location_id smallint,
+            do_location_id smallint,
+            payment_type smallint not null,
+            fare numeric(12,2) not null,
+            extras numeric(12,2) not null,
+            mta_tax numeric(12,2) not null,
+            tip numeric(12,2) not null,
+            tolls numeric(12,2) not null,
+            improvement numeric(12,2) not null,
+            total numeric(12,2) not null,
+            congestion numeric(12,2) not null,
+            airport_fee numeric(12,2) default 0.0,
+            cbd_congestion_fee numeric(12,2) default 0.0
+        )
+        '''
     return sql
+
+
+def get_duckdb_insert_validate_sql(year: str, table_name: str):
+    if int(year) >= 2025:
+        sql = f'''insert into {table_name}
+        (
+        vendor_id,
+        tpep_pickup,
+        tpep_dropoff,
+        passenger_count,
+        trip_distance,
+        ratecode_id,
+        store_and_forward,
+        pu_location_id,
+        do_location_id,
+        payment_type,
+        fare,
+        extras,
+        mta_tax,
+        tip,
+        tolls,
+        improvement,
+        total,
+        congestion,
+        airport_fee,
+        cbd_congestion_fee
+        )
+        select * 
+        from staging
+        where
+            try_cast(vendor_id as smallint) is not null and
+            try_cast(tpep_pickup as timestamp) is not null and
+            try_cast(tpep_dropoff as timestamp) is not null and
+            try_cast(passenger_count as smallint) is not null and
+            try_cast(trip_distance as numeric(12,2)) is not null and
+            try_cast(ratecode_id as smallint) is not null and
+            store_and_forward in ('N', 'Y', 'n', 'y') and
+            try_cast(pu_location_id as smallint) is not null and
+            try_cast(do_location_id as smallint) is not null and
+            try_cast(payment_type as smallint) is not null and
+            try_cast(fare as numeric(12,2)) is not null and
+            try_cast(extras as numeric(12,2)) is not null and
+            try_cast(mta_tax as numeric(12,2)) is not null and
+            try_cast(tip as numeric(12,2)) is not null and
+            try_cast(tolls as numeric(12,2)) is not null and
+            try_cast(improvement as numeric(12,2)) is not null and
+            try_cast(total as numeric(12,2)) is not null and
+            try_cast(congestion as numeric(12,2)) is not null and
+            try_cast(airport_fee as numeric(12,2)) is not null and
+            try_cast(cbd_congestion_fee as numeric(12,2)) is not null
+        '''
+    else:
+        sql = f'''insert into {table_name}
+        (
+        vendor_id,
+        tpep_pickup,
+        tpep_dropoff,
+        passenger_count,
+        trip_distance,
+        ratecode_id,
+        store_and_forward,
+        pu_location_id,
+        do_location_id,
+        payment_type,
+        fare,
+        extras,
+        mta_tax,
+        tip,
+        tolls,
+        improvement,
+        total,
+        congestion,
+        airport_fee
+        )
+        select * 
+        from staging
+        where
+            try_cast(vendor_id as smallint) is not null and
+            try_cast(tpep_pickup as timestamp) is not null and
+            try_cast(tpep_dropoff as timestamp) is not null and
+            try_cast(passenger_count as smallint) is not null and
+            try_cast(trip_distance as numeric(12,2)) is not null and
+            try_cast(ratecode_id as smallint) is not null and
+            store_and_forward in ('N', 'Y', 'n', 'y') and
+            try_cast(pu_location_id as smallint) is not null and
+            try_cast(do_location_id as smallint) is not null and
+            try_cast(payment_type as smallint) is not null and
+            try_cast(fare as numeric(12,2)) is not null and
+            try_cast(extras as numeric(12,2)) is not null and
+            try_cast(mta_tax as numeric(12,2)) is not null and
+            try_cast(tip as numeric(12,2)) is not null and
+            try_cast(tolls as numeric(12,2)) is not null and
+            try_cast(improvement as numeric(12,2)) is not null and
+            try_cast(total as numeric(12,2)) is not null and
+            try_cast(congestion as numeric(12,2)) is not null and
+            try_cast(airport_fee as numeric(12,2)) is not null
+        '''
+    return sql
+
 
 def get_temp_table_sql(year: str):
     if int(year) >= 2025:
