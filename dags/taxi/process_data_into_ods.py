@@ -67,7 +67,7 @@ def _process_data(object_name, year, batch_size):
 
             df = pd.read_parquet(io.BytesIO(response.data))
             # TODO Small dataset
-            # df = df.head(200_000)
+            df = df.head(50_000)
 
             print(f'Original column names:{df.columns}')
             from utils.columns import ODS_COLUMN_MAPPING
@@ -97,6 +97,7 @@ def _process_data(object_name, year, batch_size):
                 total_records = con.fetchall()[0][0]
                 print(f'Count of validated records: {total_records}')
 
+                print(f'Staging executed\n')
                 # load into ods
                 con.execute('''load postgres''')
                 con.execute(f'''attach
@@ -192,7 +193,7 @@ def process_data_into_ods():
     @task
     def process_data(instance_data):
         object_name, year = instance_data
-        _process_data(object_name, year, 100_000)
+        _process_data(object_name, year, 5_000)
 
     instance_data = check_instance()
     process_data(instance_data)

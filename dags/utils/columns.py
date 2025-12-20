@@ -16,50 +16,27 @@ ODS_COLUMN_MAPPING = {
     'Airport_fee': 'airport_fee'
 }
 
-def get_ods_columns(year: str):
-    if int(year) >= 2025:
-        ods_columns = [
-            'vendor_id',
-            'tpep_pickup',
-            'tpep_dropoff',
-            'passenger_count',
-            'trip_distance',
-            'ratecode_id',
-            'store_and_forward',
-            'pu_location_id',
-            'do_location_id',
-            'payment_type',
-            'fare',
-            'extras',
-            'mta_tax',
-            'tip',
-            'tolls',
-            'improvement',
-            'total',
-            'congestion',
-            'airport_fee',
-            'cbd_congestion_fee',
-        ]
-    else:
-        ods_columns = [
-            'vendor_id',
-            'tpep_pickup',
-            'tpep_dropoff',
-            'passenger_count',
-            'trip_distance',
-            'ratecode_id',
-            'store_and_forward',
-            'pu_location_id',
-            'do_location_id',
-            'payment_type',
-            'fare',
-            'extras',
-            'mta_tax',
-            'tip',
-            'tolls',
-            'improvement',
-            'total',
-            'congestion',
-            'airport_fee',
-        ]
+def get_ods_columns():
+    ods_columns = [
+        'vendor_id',
+        'tpep_pickup',
+        'tpep_dropoff',
+        'passenger_count',
+        'trip_distance',
+        'ratecode_id',
+        'store_and_forward',
+        'pu_location_id',
+        'do_location_id',
+        'payment_type',
+        'fare',
+        'extras',
+        'mta_tax',
+        'tip',
+        'tolls',
+        'improvement',
+        'total',
+        'congestion',
+        'airport_fee',
+        'cbd_congestion_fee'
+    ]
     return ods_columns
