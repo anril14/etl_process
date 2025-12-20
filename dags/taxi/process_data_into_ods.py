@@ -48,7 +48,7 @@ def _check_instance(date):
         raise TypeError(err)
 
 
-def _process_data(object_name, year):
+def _process_data(object_name, year, batch_size):
     import pandas as pd
     try:
         client = Minio(
@@ -67,7 +67,7 @@ def _process_data(object_name, year):
 
             df = pd.read_parquet(io.BytesIO(response.data))
             # TODO Small dataset
-            df = df.head(200_000)
+            # df = df.head(200_000)
 
             print(f'Original column names:{df.columns}')
             from utils.columns import ODS_COLUMN_MAPPING
@@ -94,7 +94,8 @@ def _process_data(object_name, year):
                 insert_sql = get_duckdb_insert_validate_sql(year, 'staging_validate')
                 con.execute(insert_sql)
                 con.execute('''select count(*) from staging_validate''')
-                print(f'Count of validated records: {con.fetchall()[0][0]}')
+                total_records = con.fetchall()[0][0]
+                print(f'Count of validated records: {total_records}')
 
                 # load into ods
                 con.execute('''load postgres''')
@@ -106,58 +107,65 @@ def _process_data(object_name, year):
                             password={POSTGRES_DWH_PASSWORD}'
                             as db(type postgres, schema ods)''')
 
-                con.execute('''insert into db.taxi_data
-                (
-                    vendor_id,
-                    tpep_pickup,
-                    tpep_dropoff,
-                    passenger_count,
-                    trip_distance,
-                    ratecode_id,
-                    store_and_forward,
-                    pu_location_id,
-                    do_location_id,
-                    payment_type,
-                    fare,
-                    extras,
-                    mta_tax,
-                    tip,
-                    tolls,
-                    improvement,
-                    total,
-                    congestion,
-                    airport_fee,
-                    cbd_congestion_fee
-                )
-                select vendor_id,
-                    tpep_pickup,
-                    tpep_dropoff,
-                    passenger_count,
-                    trip_distance,
-                    ratecode_id,
-                    case 
-                        when store_and_forward in ('N', 'n') then false 
-                        else true 
-                    end as store_and_forward,
-                    pu_location_id,
-                    do_location_id,
-                    payment_type,
-                    fare,
-                    extras,
-                    mta_tax,
-                    tip,
-                    tolls,
-                    improvement,
-                    total,
-                    congestion,
-                    airport_fee,
-                    cbd_congestion_fee
-                from staging_validate
-                where 
-                    vendor_id in (1, 2, 6, 7) and
-                    ratecode_id in (1, 2, 3, 4, 5, 6, 99) and
-                    payment_type in (0, 1, 2, 3, 4, 5, 6)
-                ''')
+                offset = 0
+                while offset < total_records:
+                    con.execute(f'''insert into db.taxi_data
+                    (
+                        vendor_id,
+                        tpep_pickup,
+                        tpep_dropoff,
+                        passenger_count,
+                        trip_distance,
+                        ratecode_id,
+                        store_and_forward,
+                        pu_location_id,
+                        do_location_id,
+                        payment_type,
+                        fare,
+                        extras,
+                        mta_tax,
+                        tip,
+                        tolls,
+                        improvement,
+                        total,
+                        congestion,
+                        airport_fee,
+                        cbd_congestion_fee
+                    )
+                    select vendor_id,
+                        tpep_pickup,
+                        tpep_dropoff,
+                        passenger_count,
+                        trip_distance,
+                        ratecode_id,
+                        case 
+                            when store_and_forward in ('N', 'n') then false 
+                            else true 
+                        end as store_and_forward,
+                        pu_location_id,
+                        do_location_id,
+                        payment_type,
+                        fare,
+                        extras,
+                        mta_tax,
+                        tip,
+                        tolls,
+                        improvement,
+                        total,
+                        congestion,
+                        airport_fee,
+                        cbd_congestion_fee
+                    from staging_validate
+                    where 
+                        vendor_id in (1, 2, 6, 7) and
+                        ratecode_id in (1, 2, 3, 4, 5, 6, 99) and
+                        payment_type in (0, 1, 2, 3, 4, 5, 6)
+                    limit {batch_size}
+                    offset {offset}
+                    ''')
+                    print(f'Loaded {offset + batch_size} total records')
+                    offset += batch_size
+
         print('Executed')
     except Exception as err:
         print(err)
@@ -184,7 +192,7 @@ def process_data_into_ods():
     @task
     def process_data(instance_data):
         object_name, year = instance_data
-        _process_data(object_name, year)
+        _process_data(object_name, year, 100_000)
 
     instance_data = check_instance()
     process_data(instance_data)
