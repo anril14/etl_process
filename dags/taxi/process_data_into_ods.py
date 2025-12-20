@@ -74,6 +74,7 @@ def _process_data(object_name, year):
             df = df.rename(columns=ODS_COLUMN_MAPPING)
             print(f'Refactored column names:{df.columns}')
 
+            # TODO Create dag with old way validation
             # validate
             with duckdb.connect(database=':memory') as con:
                 init_staging_sql = get_duckdb_temp_table_sql(year, 'staging')
@@ -147,6 +148,7 @@ def _process_data(object_name, year):
                     payment_type in (0, 1, 2, 3, 4, 5, 6)
                 ''').fetchdf()
 
+        # TODO Optimize load process
         # load into ods
         from sqlalchemy import create_engine
         engine = create_engine(
