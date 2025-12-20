@@ -1,51 +1,51 @@
 def get_duckdb_table_sql(year: str):
     if int(year) >= 2025:
         sql = f'''
-            CREATE TABLE staging (
-                vendor_id VARCHAR,
-                tpep_pickup VARCHAR,
-                tpep_dropoff VARCHAR,
-                passenger_count VARCHAR,
-                trip_distance VARCHAR,
-                ratecode_id VARCHAR,
-                store_and_forward VARCHAR,
-                pu_location_id VARCHAR,
-                do_location_id VARCHAR,
-                payment_type VARCHAR,
-                fare VARCHAR,
-                extras VARCHAR,
-                mta_tax VARCHAR,
-                tip VARCHAR,
-                tolls VARCHAR,
-                improvement VARCHAR,
-                total VARCHAR,
-                congestion VARCHAR,
-                airport_fee VARCHAR,
-                cbd_congestion_fee VARCHAR
+            create table staging (
+                vendor_id varchar,
+                tpep_pickup varchar,
+                tpep_dropoff varchar,
+                passenger_count varchar,
+                trip_distance varchar,
+                ratecode_id varchar,
+                store_and_forward varchar,
+                pu_location_id varchar,
+                do_location_id varchar,
+                payment_type varchar,
+                fare varchar,
+                extras varchar,
+                mta_tax varchar,
+                tip varchar,
+                tolls varchar,
+                improvement varchar,
+                total varchar,
+                congestion varchar,
+                airport_fee varchar,
+                cbd_congestion_fee varchar
             )
             '''
     else:
         sql = f'''
-            CREATE TABLE staging (
-                vendor_id VARCHAR,
-                tpep_pickup VARCHAR,
-                tpep_dropoff VARCHAR,
-                passenger_count VARCHAR,
-                trip_distance VARCHAR,
-                ratecode_id VARCHAR,
-                store_and_forward VARCHAR,
-                pu_location_id VARCHAR,
-                do_location_id VARCHAR,
-                payment_type VARCHAR,
-                fare VARCHAR,
-                extras VARCHAR,
-                mta_tax VARCHAR,
-                tip VARCHAR,
-                tolls VARCHAR,
-                improvement VARCHAR,
-                total VARCHAR,
-                congestion VARCHAR,
-                airport_fee VARCHAR
+            create table staging (
+                vendor_id varchar,
+                tpep_pickup varchar,
+                tpep_dropoff varchar,
+                passenger_count varchar,
+                trip_distance varchar,
+                ratecode_id varchar,
+                store_and_forward varchar,
+                pu_location_id varchar,
+                do_location_id varchar,
+                payment_type varchar,
+                fare varchar,
+                extras varchar,
+                mta_tax varchar,
+                tip varchar,
+                tolls varchar,
+                improvement varchar,
+                total varchar,
+                congestion varchar,
+                airport_fee varchar
             )
             '''
     return sql
