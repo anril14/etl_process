@@ -6,6 +6,7 @@ from datetime import datetime
 
 from airflow.sdk import dag, task, get_current_context
 
+# TODO: Refactor migrations to actual state
 
 # migrations
 def _run_migrations():
