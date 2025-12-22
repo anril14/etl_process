@@ -9,4 +9,6 @@ create table if not exists reg.taxi_data (
 	file_size bigint not null
 	);
 
--- TODO: Подумать над необходимостью "Полноценного" stg-слоя, или попробовать реализовать только т.н. "registry"
+-- TODO: С уникальностью момент решить и как обрабатывать одни и те же файлики
+
+--TODO: Добавить индекс для raw_path или covered_dates <- подумать что лучше

@@ -14,38 +14,113 @@ from utils.get_env import *
 from utils.get_sql import *
 
 
-def _check_instance(date):
+# saving raw parquet to minio bucket
+def _save_raw_data_to_minio(date):
+    import requests
     try:
-        with psycopg2.connect(
-                host=POSTGRES_DWH_HOST,
-                port=POSTGRES_DWH_PORT,
-                dbname=POSTGRES_DWH_DB,
-                user=POSTGRES_DWH_USER,
-                password=POSTGRES_DWH_PASSWORD,
-        ) as conn:
-            covered_date = f'{date.year}_{date.month:02d}'
-            print(covered_date)
-            with conn.cursor() as cur:
-                cur.execute(
-                    '''
-                    select raw_path 
-                    from reg.taxi_data
-                    where covered_dates = %s
-                        and processed = false
-                    limit 1
-                    ''', (covered_date,))
-                # TODO: Убрать LIMIT 1 и вызывать ошибку когда более 1 результата (сейчас для удобства разработки)
-                result = cur.fetchall()
-                if len(result) > 1:
-                    print(f'Warning: more than 1 non-processed records for \'{covered_date}\'')
-            conn.commit()
+        url = (f'https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_'
+               f'{date.year}-{date.month:02d}.parquet')
+        print(url)
+        r = requests.get(url=url)
+        print(len(r.content))
+    except Exception:
+        raise Exception('Get request error')
+
+    try:
+        # get size in bytes
+        bytes_size = len(r.content)
+
+        print(MINIO_ENDPOINT)
+        client = Minio(
+            endpoint=MINIO_ENDPOINT,
+            access_key=MINIO_ACCESS_KEY,
+            secret_key=MINIO_SECRET_KEY,
+            secure=False
+        )
+        bucket_name = MINIO_BUCKET_NAME
+
+        # create bucket if no one
+        if not client.bucket_exists(bucket_name):
+            client.make_bucket(bucket_name)
+            print(f'Bucket {bucket_name} is created, saving file...')
+        else:
+            print(f'Bucket {bucket_name} is already created, saving file...')
+
+        result = client.put_object(bucket_name=bucket_name,
+                                   object_name=f'raw/taxi/{date.year}/{date.month:02d}/yellow_tripdata.parquet',
+                                   data=io.BytesIO(r.content),
+                                   content_type='application/octet-stream',
+                                   length=bytes_size,
+                                   )
+        # logs
+        print(
+            f'Created {result.object_name} object; Etag: {result.etag}, '
+            f'Version-id: {result.version_id}',
+        )
+        covered_dates = f'{date.year}_{date.month:02d}'
+        # returning path, covered dates, size in bytes
+        return result.object_name, covered_dates, bytes_size
+    except Exception as err:
+        print(err)
+        return None
+
+
+def _update_reg(raw_path, covered_dates, bytes_size):
+    with duckdb.connect(database=':memory') as con:
+        con.begin()
+        try:
+            con.execute(f'''attach
+                'host={POSTGRES_DWH_HOST} 
+                port={POSTGRES_DWH_PORT}
+                dbname={POSTGRES_DWH_DB} 
+                user={POSTGRES_DWH_USER} 
+                password={POSTGRES_DWH_PASSWORD}'
+                as reg(type postgres, schema reg)''')
+
+            con.execute(
+                '''
+                insert into reg.taxi_data (raw_path, covered_dates, file_size)
+                    values (?, ?, ?)
+                ''', [raw_path, covered_dates, bytes_size]).fetchall()
+
+            con.commit()
             print(f'Executed\n')
-            print(result)
-            # [][] because returns tuple inside list
-            return result[0][0], date.year
-    except psycopg2.Error as err:
-        print(f'psycopg2 error: {err}')
-        raise TypeError(err)
+            return covered_dates
+        except AirflowException as err:
+            print(err)
+            return None
+
+
+def _check_instance(covered_dates):
+    date_formatted = datetime.strptime(covered_dates, '%Y_%m')
+    with duckdb.connect(database=':memory') as con:
+        con.execute(f'''attach
+            'host={POSTGRES_DWH_HOST} 
+            port={POSTGRES_DWH_PORT}
+            dbname={POSTGRES_DWH_DB} 
+            user={POSTGRES_DWH_USER} 
+            password={POSTGRES_DWH_PASSWORD}'
+            as reg(type postgres, schema reg)''')
+
+        covered_date = f'{date_formatted.year}_{date_formatted.month:02d}'
+        print(covered_date)
+        result = con.execute(
+            '''
+            select raw_path 
+            from reg.taxi_data
+            where covered_dates = ?
+                and processed = false
+            limit 1
+            ''', [covered_date]).fetchall()
+        # TODO: Убрать LIMIT 1 и вызывать ошибку когда более 1 результата (сейчас для удобства разработки)
+
+        if len(result) > 1:
+            print(f'Warning: more than 1 non-processed records for \'{covered_date}\'')
+
+        print(f'Executed\n')
+        print(result)
+        # [][] because returns tuple inside list
+        return result[0][0], date_formatted.year
 
 
 def _process_data(object_name, year, batch_size):
@@ -67,7 +142,7 @@ def _process_data(object_name, year, batch_size):
 
             df = pd.read_parquet(io.BytesIO(response.data))
             # TODO Small dataset
-            df = df.head(50_000)
+            df = df.head(20_000)
 
             print(f'Original column names:{df.columns}')
             from utils.columns import ODS_COLUMN_MAPPING
@@ -76,6 +151,7 @@ def _process_data(object_name, year, batch_size):
 
             # validate
             with duckdb.connect(database=':memory') as con:
+
                 init_staging_sql = get_duckdb_temp_table_sql(year, 'staging')
                 con.execute("drop table if exists staging")
                 con.execute(init_staging_sql)
@@ -97,80 +173,114 @@ def _process_data(object_name, year, batch_size):
                 total_records = con.fetchall()[0][0]
                 print(f'Count of validated records: {total_records}')
 
-                print(f'Staging executed\n')
-                # load into ods
-                con.execute('''load postgres''')
-                con.execute(f'''attach
-                            'host={POSTGRES_DWH_HOST} 
-                            port={POSTGRES_DWH_PORT}
-                            dbname={POSTGRES_DWH_DB} 
-                            user={POSTGRES_DWH_USER} 
-                            password={POSTGRES_DWH_PASSWORD}'
-                            as db(type postgres, schema ods)''')
-
-                offset = 0
-                while offset < total_records:
-                    con.execute(f'''insert into db.taxi_data
-                    (
-                        vendor_id,
-                        tpep_pickup,
-                        tpep_dropoff,
-                        passenger_count,
-                        trip_distance,
-                        ratecode_id,
-                        store_and_forward,
-                        pu_location_id,
-                        do_location_id,
-                        payment_type,
-                        fare,
-                        extras,
-                        mta_tax,
-                        tip,
-                        tolls,
-                        improvement,
-                        total,
-                        congestion,
-                        airport_fee,
-                        cbd_congestion_fee
-                    )
-                    select vendor_id,
-                        tpep_pickup,
-                        tpep_dropoff,
-                        passenger_count,
-                        trip_distance,
-                        ratecode_id,
-                        case 
-                            when store_and_forward in ('N', 'n') then false 
-                            else true 
-                        end as store_and_forward,
-                        pu_location_id,
-                        do_location_id,
-                        payment_type,
-                        fare,
-                        extras,
-                        mta_tax,
-                        tip,
-                        tolls,
-                        improvement,
-                        total,
-                        congestion,
-                        airport_fee,
-                        cbd_congestion_fee
-                    from staging_validate
-                    where 
-                        vendor_id in (1, 2, 6, 7) and
-                        ratecode_id in (1, 2, 3, 4, 5, 6, 99) and
-                        payment_type in (0, 1, 2, 3, 4, 5, 6)
-                    limit {batch_size}
-                    offset {offset}
+                con.begin()
+                try:
+                    print(f'Staging executed\n')
+                    # load into ods
+                    con.execute('''load postgres''')
+                    con.execute(f'''
+                        attach
+                        'host={POSTGRES_DWH_HOST} 
+                        port={POSTGRES_DWH_PORT}
+                        dbname={POSTGRES_DWH_DB} 
+                        user={POSTGRES_DWH_USER} 
+                        password={POSTGRES_DWH_PASSWORD}'
+                        as ods(type postgres, schema ods)
                     ''')
-                    print(f'Loaded {offset + batch_size} total records')
-                    offset += batch_size
+
+                    print('Successfully connected to an ods table')
+
+                    offset = 0
+                    while offset < total_records:
+                        con.execute(f'''
+                            insert into ods.taxi_data
+                            (
+                                vendor_id,
+                                tpep_pickup,
+                                tpep_dropoff,
+                                passenger_count,
+                                trip_distance,
+                                ratecode_id,
+                                store_and_forward,
+                                pu_location_id,
+                                do_location_id,
+                                payment_type,
+                                fare,
+                                extras,
+                                mta_tax,
+                                tip,
+                                tolls,
+                                improvement,
+                                total,
+                                congestion,
+                                airport_fee,
+                                cbd_congestion_fee
+                            )
+                            select vendor_id,
+                                tpep_pickup,
+                                tpep_dropoff,
+                                passenger_count,
+                                trip_distance,
+                                ratecode_id,
+                                case 
+                                    when store_and_forward in ('N', 'n') then false 
+                                    else true 
+                                end as store_and_forward,
+                                pu_location_id,
+                                do_location_id,
+                                payment_type,
+                                fare,
+                                extras,
+                                mta_tax,
+                                tip,
+                                tolls,
+                                improvement,
+                                total,
+                                congestion,
+                                airport_fee,
+                                cbd_congestion_fee
+                            from staging_validate
+                            where 
+                                vendor_id in (1, 2, 6, 7) and
+                                ratecode_id in (1, 2, 3, 4, 5, 6, 99) and
+                                payment_type in (0, 1, 2, 3, 4, 5, 6)
+                            limit {batch_size}
+                            offset {offset}
+                        ''')
+                        print(f'Loaded {offset + batch_size} total records')
+                        offset += batch_size
+                    con.commit()
+
+                    con.execute(f'''
+                        attach
+                        'host={POSTGRES_DWH_HOST} 
+                        port={POSTGRES_DWH_PORT}
+                        dbname={POSTGRES_DWH_DB} 
+                        user={POSTGRES_DWH_USER} 
+                        password={POSTGRES_DWH_PASSWORD}'
+                        as reg(type postgres, schema reg)
+                    ''')
+
+                    print('Successfully connected to a reg table')
+
+                    con.execute(f'''
+                        update reg.taxi_data
+                        set processed = true,
+                            processed_time = current_localtimestamp()
+                        where raw_path = ?
+                    ''', [object_name])
+
+                    print('Executed')
+                except Exception as err:
+                    con.rollback()
+                    print(f' {err}')
+                    raise AirflowException(err)
 
         print('Executed')
+        return None
     except Exception as err:
         print(err)
-        raise AirflowException(err)
+        return None
 
 
 # dag initialization
@@ -186,16 +296,28 @@ def _process_data(object_name, year, batch_size):
 )
 def process_data_into_ods():
     @task
-    def check_instance():
+    def save_raw_data_to_minio():
         date = get_current_context()['dag'].start_date
-        return _check_instance(date)
+        return _save_raw_data_to_minio(date)
+
+    @task
+    def update_reg(minio_data):
+        raw_path, covered_dates, bytes_size = minio_data
+        return _update_reg(raw_path, covered_dates, bytes_size)
+
+    @task
+    def check_instance(covered_dates):
+        return _check_instance(covered_dates)
 
     @task
     def process_data(instance_data):
         object_name, year = instance_data
         _process_data(object_name, year, 5_000)
 
-    instance_data = check_instance()
+    minio_data = save_raw_data_to_minio()
+    covered_dates = update_reg(minio_data)
+
+    instance_data = check_instance(covered_dates)
     process_data(instance_data)
 
 

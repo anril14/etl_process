@@ -84,7 +84,7 @@ def _update_reg(raw_path, covered_dates, bytes_size):
             print(f'Executed\n')
         return raw_path
     except psycopg2.Error as err:
-        print(f'psycopg2 error: {err}')
+        print(f'Psycopg2 error: {err}')
         return None
 
 
