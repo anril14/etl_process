@@ -1,22 +1,23 @@
 import io
 import json
 import os
-
-import psycopg2
-import pandas as pd
-import pyarrow.parquet
 from airflow.sdk.bases.operator import AirflowException
-from dotenv import dotenv_values
 from airflow.sdk import dag, task, get_current_context, Variable
 from datetime import datetime
-from random import randint
 from minio import Minio
 from utils.get_env import *
-import requests
+
+
+# getting dates from context
+def _get_covered_dates():
+    context = get_current_context()['dag']
+    date = context.start_date
+    return date
 
 
 # saving raw parquet to minio bucket
-def _d_save_raw_data_to_minio(date):
+def _save_raw_parquet_to_minio(date):
+    import requests
     try:
         url = (f'https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_'
                f'{date.year}-{date.month:02d}.parquet')
@@ -62,35 +63,39 @@ def _d_save_raw_data_to_minio(date):
         return result.object_name, covered_dates, bytes_size
     except Exception as err:
         print(err)
-        raise AirflowException(err)
-
-
-def _d_update_reg(raw_path, covered_dates, bytes_size):
-    try:
-        with psycopg2.connect(
-                host=POSTGRES_DWH_HOST,
-                port=POSTGRES_DWH_PORT,
-                dbname=POSTGRES_DWH_DB,
-                user=POSTGRES_DWH_USER,
-                password=POSTGRES_DWH_PASSWORD,
-        ) as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    '''
-                    insert into reg.taxi_data (raw_path, covered_dates, file_size)
-                    values (%s, %s, %s)
-                    ''', (raw_path, covered_dates, bytes_size))
-            conn.commit()
-            print(f'Executed\n')
-        return raw_path
-    except psycopg2.Error as err:
-        print(f'Psycopg2 error: {err}')
         return None
+
+
+def _update_reg_table(raw_path, covered_dates, bytes_size):
+    import duckdb
+    with duckdb.connect(database=':memory') as con:
+        con.begin()
+        try:
+            con.execute(f'''attach
+                'host={POSTGRES_DWH_HOST} 
+                port={POSTGRES_DWH_PORT}
+                dbname={POSTGRES_DWH_DB} 
+                user={POSTGRES_DWH_USER} 
+                password={POSTGRES_DWH_PASSWORD}'
+                as reg(type postgres, schema reg)''')
+
+            con.execute(
+                '''
+                insert into reg.taxi_data (raw_path, covered_dates, file_size)
+                    values (?, ?, ?)
+                ''', [raw_path, covered_dates, bytes_size])
+
+            con.commit()
+            print(f'Executed\n')
+            return covered_dates
+        except AirflowException as err:
+            print(err)
+            return None
 
 
 # dag initialization
 @dag(
-    dag_id='d_save_raw_data',
+    dag_id='save_raw_data_to_minio',
     start_date=datetime(
         int(Variable.get('year')),
         int(Variable.get('month')),
@@ -99,19 +104,23 @@ def _d_update_reg(raw_path, covered_dates, bytes_size):
     schedule=None,
     catchup=False
 )
-def d_save_raw_data():
+def save_raw_data_to_minio():
     @task
-    def d_save_raw_data_to_minio():
-        date = get_current_context()['dag'].start_date
-        return _d_save_raw_data_to_minio(date)
+    def get_covered_dates():
+        return _get_covered_dates()
 
     @task
-    def d_update_reg(minio_data):
+    def save_raw_parquet_to_minio(covered_dates):
+        return _save_raw_parquet_to_minio(covered_dates)
+
+    @task
+    def update_reg_table(minio_data):
         raw_path, covered_dates, bytes_size = minio_data
-        _d_update_reg(raw_path, covered_dates, bytes_size)
+        return _update_reg_table(raw_path, covered_dates, bytes_size)
 
-    minio_data = d_save_raw_data_to_minio()
-    d_update_reg(minio_data)
+    covered_dates = get_covered_dates()
+    minio_data = save_raw_parquet_to_minio(covered_dates)
+    update_reg_table(minio_data)
 
 
-d_save_raw_data()
+save_raw_data_to_minio()

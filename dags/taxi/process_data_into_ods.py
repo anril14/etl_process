@@ -14,85 +14,14 @@ from utils.get_env import *
 from utils.get_sql import *
 
 
-# saving raw parquet to minio bucket
-def _save_raw_data_to_minio(date):
-    import requests
-    try:
-        url = (f'https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_'
-               f'{date.year}-{date.month:02d}.parquet')
-        print(url)
-        r = requests.get(url=url)
-        print(len(r.content))
-    except Exception:
-        raise Exception('Get request error')
-
-    try:
-        # get size in bytes
-        bytes_size = len(r.content)
-
-        print(MINIO_ENDPOINT)
-        client = Minio(
-            endpoint=MINIO_ENDPOINT,
-            access_key=MINIO_ACCESS_KEY,
-            secret_key=MINIO_SECRET_KEY,
-            secure=False
-        )
-        bucket_name = MINIO_BUCKET_NAME
-
-        # create bucket if no one
-        if not client.bucket_exists(bucket_name):
-            client.make_bucket(bucket_name)
-            print(f'Bucket {bucket_name} is created, saving file...')
-        else:
-            print(f'Bucket {bucket_name} is already created, saving file...')
-
-        result = client.put_object(bucket_name=bucket_name,
-                                   object_name=f'raw/taxi/{date.year}/{date.month:02d}/yellow_tripdata.parquet',
-                                   data=io.BytesIO(r.content),
-                                   content_type='application/octet-stream',
-                                   length=bytes_size,
-                                   )
-        # logs
-        print(
-            f'Created {result.object_name} object; Etag: {result.etag}, '
-            f'Version-id: {result.version_id}',
-        )
-        covered_dates = f'{date.year}_{date.month:02d}'
-        # returning path, covered dates, size in bytes
-        return result.object_name, covered_dates, bytes_size
-    except Exception as err:
-        print(err)
-        return None
+# getting dates from context
+def _get_covered_dates():
+    context = get_current_context()['dag']
+    date = context.start_date
+    return date
 
 
-def _update_reg(raw_path, covered_dates, bytes_size):
-    with duckdb.connect(database=':memory') as con:
-        con.begin()
-        try:
-            con.execute(f'''attach
-                'host={POSTGRES_DWH_HOST} 
-                port={POSTGRES_DWH_PORT}
-                dbname={POSTGRES_DWH_DB} 
-                user={POSTGRES_DWH_USER} 
-                password={POSTGRES_DWH_PASSWORD}'
-                as reg(type postgres, schema reg)''')
-
-            con.execute(
-                '''
-                insert into reg.taxi_data (raw_path, covered_dates, file_size)
-                    values (?, ?, ?)
-                ''', [raw_path, covered_dates, bytes_size]).fetchall()
-
-            con.commit()
-            print(f'Executed\n')
-            return covered_dates
-        except AirflowException as err:
-            print(err)
-            return None
-
-
-def _check_instance(covered_dates):
-    date_formatted = datetime.strptime(covered_dates, '%Y_%m')
+def _check_instance(date):
     with duckdb.connect(database=':memory') as con:
         con.execute(f'''attach
             'host={POSTGRES_DWH_HOST} 
@@ -102,7 +31,7 @@ def _check_instance(covered_dates):
             password={POSTGRES_DWH_PASSWORD}'
             as reg(type postgres, schema reg)''')
 
-        covered_date = f'{date_formatted.year}_{date_formatted.month:02d}'
+        covered_date = f'{date.year}_{date.month:02d}'
         print(covered_date)
         result = con.execute(
             '''
@@ -120,7 +49,7 @@ def _check_instance(covered_dates):
         print(f'Executed\n')
         print(result)
         # [][] because returns tuple inside list
-        return result[0][0], date_formatted.year
+        return result[0][0], date.year
 
 
 def _process_data(object_name, year, batch_size):
@@ -217,8 +146,8 @@ def _process_data(object_name, year, batch_size):
                                 cbd_congestion_fee
                             )
                             select vendor_id,
-                                tpep_pickup,
-                                tpep_dropoff,
+                                tpep_pickup + interval '3 hours',
+                                tpep_dropoff + interval '3 hours',
                                 passenger_count,
                                 trip_distance,
                                 ratecode_id,
@@ -296,14 +225,8 @@ def _process_data(object_name, year, batch_size):
 )
 def process_data_into_ods():
     @task
-    def save_raw_data_to_minio():
-        date = get_current_context()['dag'].start_date
-        return _save_raw_data_to_minio(date)
-
-    @task
-    def update_reg(minio_data):
-        raw_path, covered_dates, bytes_size = minio_data
-        return _update_reg(raw_path, covered_dates, bytes_size)
+    def get_covered_dates():
+        return _get_covered_dates()
 
     @task
     def check_instance(covered_dates):
@@ -314,9 +237,7 @@ def process_data_into_ods():
         object_name, year = instance_data
         _process_data(object_name, year, 5_000)
 
-    minio_data = save_raw_data_to_minio()
-    covered_dates = update_reg(minio_data)
-
+    covered_dates = get_covered_dates()
     instance_data = check_instance(covered_dates)
     process_data(instance_data)
 
