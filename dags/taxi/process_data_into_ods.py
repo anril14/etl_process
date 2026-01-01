@@ -44,7 +44,6 @@ def _check_instance(date):
                 and processed = false
             limit 1
             ''', [covered_date]).fetchall()
-        # TODO: Убрать LIMIT 1 и вызывать ошибку когда более 1 результата (сейчас для удобства разработки)
 
         if len(result) > 1:
             print(f'Warning: more than 1 non-processed records for \'{covered_date}\'')
@@ -77,7 +76,7 @@ def _process_data(object_name, date, batch_size):
 
             df = pd.read_parquet(io.BytesIO(response.data))
             # Smaller dataset
-            df = df.head(1_000_000)
+            df = df.head(100_000)
 
             print(f'Original column names:{df.columns}')
             from utils.columns import ODS_COLUMN_MAPPING
@@ -308,7 +307,7 @@ def process_data_into_ods():
     @task
     def process_data(instance_data):
         object_name, covered_dates = instance_data
-        _process_data(object_name, covered_dates, 100_000)
+        _process_data(object_name, covered_dates, 10_000)
 
     covered_dates = get_covered_dates()
     instance_data = check_instance(covered_dates), covered_dates

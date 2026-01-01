@@ -8,7 +8,3 @@ create table if not exists reg.taxi_data (
 	processed_time timestamp default null,
 	file_size bigint not null
 	);
-
--- TODO: С уникальностью момент решить и как обрабатывать одни и те же файлики
-
---TODO: Добавить индекс для raw_path или covered_dates <- подумать что лучше
