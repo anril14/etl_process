@@ -6,6 +6,7 @@
 - работу с большими объемами данных (~3 млн записей за один загружаемый период)
 - контроль качества данных (data quality)
 - оптимизацию загрузки данных в DWH-хранилище
+- визуальную демонстрацию через Metabase
 
 ## Архитектура проекта
 <img width="1011" height="371" alt="ETL_process" src="https://github.com/user-attachments/assets/6becf4c6-76ac-43c4-8e8f-09c486661c4a" />
@@ -34,6 +35,8 @@
 <img width="863" height="717" alt="image" src="https://github.com/user-attachments/assets/7f3e8f1a-cca0-4a1c-9a8f-41139ffa5f3d" />
 
 ## Список DAG'ов Airflow:
+
+### Запуск DAG'ов производится вручную
  - **save_raw_data_to_minio**
  Сохранение данных из API
  
