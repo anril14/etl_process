@@ -14,6 +14,9 @@ from utils.get_env import *
 from utils.get_sql import *
 
 
+# from dags.utils.get_sql import *
+
+
 # getting dates from context
 def _get_covered_dates():
     context = get_current_context()['dag']
@@ -49,10 +52,13 @@ def _check_instance(date):
         print(f'Executed\n')
         print(result)
         # [][] because returns tuple inside list
-        return result[0][0], date.year
+        if len(result) == 0:
+            raise ValueError('No right values in registry')
+
+        return result[0][0]
 
 
-def _process_data(object_name, year, batch_size):
+def _process_data(object_name, date, batch_size):
     import pandas as pd
     try:
         client = Minio(
@@ -70,8 +76,8 @@ def _process_data(object_name, year, batch_size):
             print(f'Bytes length: {len(response.data)}')
 
             df = pd.read_parquet(io.BytesIO(response.data))
-            # TODO Small dataset
-            df = df.head(200_000)
+            # Smaller dataset
+            df = df.head(1_000_000)
 
             print(f'Original column names:{df.columns}')
             from utils.columns import ODS_COLUMN_MAPPING
@@ -81,7 +87,7 @@ def _process_data(object_name, year, batch_size):
             # validate
             with duckdb.connect(database=':memory') as con:
 
-                init_staging_sql = get_duckdb_temp_table_sql(year, 'staging')
+                init_staging_sql = get_duckdb_create_temp_table_sql(str(date.year), 'staging')
                 con.execute("drop table if exists staging")
                 con.execute(init_staging_sql)
 
@@ -92,15 +98,37 @@ def _process_data(object_name, year, batch_size):
                 # print count
                 print(f'Count of records: {con.fetchall()[0][0]}')
 
-                init_staging_validate_sql = get_duckdb_validate_table_sql('staging_validate')
+                init_staging_validate_sql = get_duckdb_create_validate_table_sql('staging_validate')
                 con.execute("drop table if exists staging_validate")
                 con.execute(init_staging_validate_sql)
 
-                insert_sql = get_duckdb_insert_validate_sql(year, 'staging_validate')
-                con.execute(insert_sql)
+                insert_validate_sql = get_duckdb_insert_validate_sql(str(date.year), 'staging', 'staging_validate')
+
+                con.execute(insert_validate_sql)
+
                 con.execute('''select count(*) from staging_validate''')
-                total_records = con.fetchall()[0][0]
-                print(f'Count of validated records: {total_records}')
+                # print count
+                print(f'Count of valid records: {con.fetchall()[0][0]}')
+
+                init_valid_sql, init_invalid_sql = get_duckdb_create_valid_tables_sql('staging_valid',
+                                                                                      'staging_invalid')
+                con.execute("drop table if exists staging_valid")
+                con.execute("drop table if exists staging_invalid")
+                con.execute(init_valid_sql)
+                con.execute(init_invalid_sql)
+
+                insert_valid_sql, insert_invalid_sql = get_duckdb_insert_valid_data(date, 'staging_valid',
+                                                                                    'staging_invalid',
+                                                                                    'staging_validate')
+                con.execute(insert_valid_sql)
+                con.execute(insert_invalid_sql)
+
+                con.execute('''select count(*) from staging_valid''')
+                total_completed = con.fetchall()[0][0]
+                print(f'Count of complete records: {total_completed}')
+                con.execute('''select count(*) from staging_invalid''')
+                total_quarantine = con.fetchall()[0][0]
+                print(f'Count of quarantine records: {total_quarantine}')
 
                 con.begin()
                 try:
@@ -120,7 +148,7 @@ def _process_data(object_name, year, batch_size):
                     print('Successfully connected to an ods table')
 
                     offset = 0
-                    while offset < total_records:
+                    while offset < total_completed:
                         con.execute(f'''
                             insert into ods.taxi_data
                             (
@@ -146,15 +174,12 @@ def _process_data(object_name, year, batch_size):
                                 cbd_congestion_fee
                             )
                             select vendor_id,
-                                tpep_pickup + interval '3 hours',
-                                tpep_dropoff + interval '3 hours',
+                                tpep_pickup,
+                                tpep_dropoff,
                                 passenger_count,
                                 trip_distance,
                                 ratecode_id,
-                                case 
-                                    when store_and_forward in ('N', 'n') then false 
-                                    else true 
-                                end as store_and_forward,
+                                store_and_forward,
                                 pu_location_id,
                                 do_location_id,
                                 payment_type,
@@ -168,15 +193,63 @@ def _process_data(object_name, year, batch_size):
                                 congestion,
                                 airport_fee,
                                 cbd_congestion_fee
-                            from staging_validate
-                            where 
-                                vendor_id in (1, 2, 6, 7) and
-                                ratecode_id in (1, 2, 3, 4, 5, 6, 99) and
-                                payment_type in (0, 1, 2, 3, 4, 5, 6)
+                            from staging_valid
                             limit {batch_size}
                             offset {offset}
                         ''')
-                        print(f'Loaded {offset + batch_size} total records')
+                        print(f'Loaded {offset + batch_size} total records into completed table')
+                        offset += batch_size
+                    offset = 0
+                    while offset < total_quarantine:
+                        con.execute(f'''
+                            insert into ods.taxi_data_quarantine
+                            (
+                                vendor_id,
+                                tpep_pickup,
+                                tpep_dropoff,
+                                passenger_count,
+                                trip_distance,
+                                ratecode_id,
+                                store_and_forward,
+                                pu_location_id,
+                                do_location_id,
+                                payment_type,
+                                fare,
+                                extras,
+                                mta_tax,
+                                tip,
+                                tolls,
+                                improvement,
+                                total,
+                                congestion,
+                                airport_fee,
+                                cbd_congestion_fee
+                            )
+                            select vendor_id,
+                                tpep_pickup,
+                                tpep_dropoff,
+                                passenger_count,
+                                trip_distance,
+                                ratecode_id,
+                                store_and_forward,
+                                pu_location_id,
+                                do_location_id,
+                                payment_type,
+                                fare,
+                                extras,
+                                mta_tax,
+                                tip,
+                                tolls,
+                                improvement,
+                                total,
+                                congestion,
+                                airport_fee,
+                                cbd_congestion_fee
+                            from staging_invalid
+                            limit {batch_size}
+                            offset {offset}
+                        ''')
+                        print(f'Loaded {offset + batch_size} total records into quarantine table')
                         offset += batch_size
                     con.commit()
 
@@ -234,11 +307,11 @@ def process_data_into_ods():
 
     @task
     def process_data(instance_data):
-        object_name, year = instance_data
-        _process_data(object_name, year, 5_000)
+        object_name, covered_dates = instance_data
+        _process_data(object_name, covered_dates, 100_000)
 
     covered_dates = get_covered_dates()
-    instance_data = check_instance(covered_dates)
+    instance_data = check_instance(covered_dates), covered_dates
     process_data(instance_data)
 
 
