@@ -14,39 +14,6 @@ from utils.get_env import *
 from utils.get_sql import *
 
 
-def _check_instance(date):
-    try:
-        with psycopg2.connect(
-                host=POSTGRES_DWH_HOST,
-                port=POSTGRES_DWH_PORT,
-                dbname=POSTGRES_DWH_DB,
-                user=POSTGRES_DWH_USER,
-                password=POSTGRES_DWH_PASSWORD,
-        ) as conn:
-            covered_date = f'{date.year}_{date.month:02d}'
-            print(covered_date)
-            with conn.cursor() as cur:
-                cur.execute(
-                    '''
-                    select raw_path 
-                    from reg.taxi_data
-                    where covered_dates = %s
-                        and processed = false
-                    limit 1
-                    ''', (covered_date,))
-                # TODO: Убрать LIMIT 1 и вызывать ошибку когда более 1 результата (сейчас для удобства разработки)
-                result = cur.fetchall()
-                if len(result) > 1:
-                    print(f'Warning: more than 1 non-processed records for \'{covered_date}\'')
-            conn.commit()
-            print(f'Executed\n')
-            print(result)
-            # [][] because returns tuple inside list
-            return result[0][0], date.year
-    except psycopg2.Error as err:
-        print(f'psycopg2 error: {err}')
-        raise TypeError(err)
-
 def _d_check_instance(date):
     try:
         with psycopg2.connect(
