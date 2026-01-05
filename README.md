@@ -6,6 +6,7 @@
 - работу с большими объемами данных (~3 млн записей за один загружаемый период)
 - контроль качества данных (data quality)
 - оптимизацию загрузки данных в DWH-хранилище
+- визуальную демонстрацию через Metabase
 
 ## Архитектура проекта
 <img width="1011" height="371" alt="ETL_process" src="https://github.com/user-attachments/assets/6becf4c6-76ac-43c4-8e8f-09c486661c4a" />
@@ -15,25 +16,29 @@
    - Описание полей из API: https://www.nyc.gov/assets/tlc/downloads/pdf/trip_record_user_guide.pdf 
 2. **ETL**: Apache Airflow, Postgres:
    - Выгрузка данных из parquet файла MinIO
-   - Запись с информацией о файле в `registry` таблицу
+   - Запись с информацией о файле в `registry` таблицу (таблица с информацией о загруженном файле)
    - Очистка и валидация данных через in_memory таблицы в duckdb
    - Идемпотентность достигается засчет флага обработки файла в `registry` таблице
    - Сохранение только валидных данных, разделенных на 'complete' и 'quarantine' (не попавшие в выборку)
    - Загрузка батчами в ods-слой в бд
-3. **ODS (Operational Data Store)**: Postgres
+3. При загрузке не используется stg-слой, так как вся валидация проходит в duckdb и необходимости сохранять все записи нет, данные не прошедшие валидацию по бизнес-логике отдельно заносятся в `taxi_data_quarantine` таблицу
+4. **ODS (Operational Data Store)**: Postgres
    - Таблицы:
-     - `taxi_data` - корректные данные
-     - `taxi_data_quarantine` - подозрительные записи (не сходящиеся по дате, с несуществующими внешними id в справочных таблицах)
+     - `taxi_data` - корректные ('complete') данные
+     - `taxi_data_quarantine` - подозрительные ('quarantine') данные (не сходящиеся по дате, с несуществующими внешними id в справочных таблицах)
      - 'quarantine' данные сохраняются для последующего анализа и улучшения правил валидации
      - Справочные таблицы (`vendor`, `ratecode`, `payment`)
    - Constraints на справочные таблицы
-4. **Data Mart**: Metabase
+5. **Data Mart**: Metabase
    - Таблицы:
      - `taxi_data` - таблица с демонстрационными данными
+   - Список всех таблиц: [Схемы SQL](#схемы-sql)
    - Конструируемый дашборд по данным из таблицы в metabase:
 <img width="863" height="717" alt="image" src="https://github.com/user-attachments/assets/7f3e8f1a-cca0-4a1c-9a8f-41139ffa5f3d" />
 
 ## Список DAG'ов Airflow:
+
+### Запуск DAG'ов производится вручную
  - **save_raw_data_to_minio**
  Сохранение данных из API
  
@@ -139,7 +144,7 @@ docker compose up
 variables.json -> Airflow
 <img width="218" height="226" alt="image" src="https://github.com/user-attachments/assets/e4b624f4-fc4b-4c35-95c8-7cf95f13afee" />
 
-4. Схемы SQL
+## Схемы SQL
 ```sql
 create schema if not exists stg;
 create schema if not exists reg;
@@ -170,6 +175,7 @@ create index if not exists idx_reg_сovered_dates on reg.taxi_data (covered_date
 ```
 
 ```sql
+# Используется только в deprecated
 create table if not exists stg.taxi_data (
     id serial primary key,
     vendor_id varchar,
