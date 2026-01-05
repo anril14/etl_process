@@ -91,11 +91,6 @@ def _d_update_reg(raw_path, covered_dates, bytes_size):
 # dag initialization
 @dag(
     dag_id='d_save_raw_data',
-    start_date=datetime(
-        int(Variable.get('year')),
-        int(Variable.get('month')),
-        int(Variable.get('day'))
-    ),
     schedule=None,
     catchup=False
 )

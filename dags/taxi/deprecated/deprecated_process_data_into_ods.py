@@ -140,11 +140,6 @@ def _d_process_data(object_name, year, batch_size):
 # dag initialization
 @dag(
     dag_id='d_process_data_into_ods',
-    start_date=datetime(
-        int(Variable.get('year')),
-        int(Variable.get('month')),
-        int(Variable.get('day'))
-    ),
     schedule=None,
     catchup=False
 )
