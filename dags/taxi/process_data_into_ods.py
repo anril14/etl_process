@@ -87,7 +87,7 @@ def _process_data(object_name, date, batch_size):
 
             df = pd.read_parquet(io.BytesIO(response.data))
             # Smaller dataset
-            df = df.head(100_000)
+            # df = df.head(100_000)
 
             print(f'Original column names:{df.columns}')
             from utils.columns import ODS_COLUMN_MAPPING
