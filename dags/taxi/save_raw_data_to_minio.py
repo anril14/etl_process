@@ -25,7 +25,7 @@ def _get_covered_dates():
         return datetime(date.year - 1, 11, 1)
     if date.month == 2:
         return datetime(date.year - 1, 12, 1)
-    return date
+    return datetime(date.year, date.month - 2, 1)
 
 
 def _check_instance(date):
