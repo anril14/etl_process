@@ -3,16 +3,59 @@ import json
 import os
 from airflow.sdk.bases.operator import AirflowException
 from airflow.sdk import dag, task, get_current_context, Variable
-from datetime import datetime
+from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator
+from airflow.providers.standard.operators.python import BranchPythonOperator
+from airflow.task.trigger_rule import TriggerRule
+from datetime import datetime, timedelta
 from minio import Minio
 from utils.get_env import *
 
 
 # getting dates from context
 def _get_covered_dates():
-    context = get_current_context()['dag']
-    date = context.start_date
+    context = get_current_context()
+    conf = context['dag_run'].conf
+    if conf and 'year' in conf and 'month' in conf:
+        month = int(conf['month'])
+        year = int(conf['year'])
+        return datetime(year, month, 1)
+
+    date = context['data_interval_start']
+    if date.month == 1:
+        return datetime(date.year - 1, 11, 1)
+    if date.month == 2:
+        return datetime(date.year - 1, 12, 1)
     return date
+
+
+def _check_instance(date):
+    import duckdb
+    print(f'result date: {date}')
+    with duckdb.connect(database=':memory') as con:
+        con.execute(f'''attach
+            'host={POSTGRES_DWH_HOST} 
+            port={POSTGRES_DWH_PORT}
+            dbname={POSTGRES_DWH_DB} 
+            user={POSTGRES_DWH_USER} 
+            password={POSTGRES_DWH_PASSWORD}'
+            as reg(type postgres, schema reg)''')
+
+        covered_date = f'{date.year}_{date.month:02d}'
+        print(f'covered_date: {covered_date}')
+        result = con.execute(
+            '''
+            select raw_path 
+            from reg.taxi_data
+            where covered_dates = ?
+                and processed = false
+            ''', [covered_date]).fetchall()
+
+        print(f'result: {result}')
+
+        if len(result) == 0:
+            return 'save_raw_parquet_to_minio'
+
+        return 'trigger_processing'
 
 
 # saving raw parquet to minio bucket
@@ -96,18 +139,20 @@ def _update_reg_table(raw_path, covered_dates, bytes_size):
 # dag initialization
 @dag(
     dag_id='save_raw_data_to_minio',
-    start_date=datetime(
-        int(Variable.get('year')),
-        int(Variable.get('month')),
-        int(Variable.get('day'))
-    ),
-    schedule=None,
-    catchup=False
+    catchup=False,
+    schedule='0 0 1 * *',
 )
 def save_raw_data_to_minio():
     @task
     def get_covered_dates():
         return _get_covered_dates()
+
+    @task
+    def prepare_conf(covered_date):
+        return {
+            'year': covered_date.year,
+            'month': covered_date.month
+        }
 
     @task
     def save_raw_parquet_to_minio(covered_dates):
@@ -119,8 +164,29 @@ def save_raw_data_to_minio():
         return _update_reg_table(raw_path, covered_dates, bytes_size)
 
     covered_dates = get_covered_dates()
+    conf_dates = prepare_conf(covered_dates)
+
+    trigger_processing = TriggerDagRunOperator(
+        task_id='trigger_processing',
+        trigger_dag_id='process_data_into_ods',
+        wait_for_completion=False,
+        trigger_rule=TriggerRule.ALL_DONE,
+        conf=conf_dates
+    )
+
+    branch_task = BranchPythonOperator(
+        task_id='check_instance',
+        python_callable=_check_instance,
+        op_args=[covered_dates]
+    )
+
     minio_data = save_raw_parquet_to_minio(covered_dates)
-    update_reg_table(minio_data)
+    update = update_reg_table(minio_data)
+
+    covered_dates >> branch_task
+    branch_task >> [trigger_processing, minio_data]
+    [minio_data] >> update
+    update >> trigger_processing
 
 
 save_raw_data_to_minio()

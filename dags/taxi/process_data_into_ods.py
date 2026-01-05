@@ -8,23 +8,35 @@ import pyarrow.parquet
 from dotenv import dotenv_values
 from airflow.sdk.bases.operator import AirflowException
 from airflow.sdk import dag, task, get_current_context, Variable
+from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator
 from datetime import datetime
 from minio import Minio
 from utils.get_env import *
 from utils.get_sql import *
 
 
+# Во время разработки чтобы были подсказки
 # from dags.utils.get_sql import *
 
 
 # getting dates from context
 def _get_covered_dates():
-    context = get_current_context()['dag']
-    date = context.start_date
-    return date
+    context = get_current_context()
+    conf = context['dag_run'].conf
+    if conf and conf['year'] and conf['month']:
+        print(f'conf {conf}')
+
+        year = conf['year']
+        month = conf['month']
+
+        date = datetime(year, month, 1)
+        return date
+    else:
+        raise ValueError('Invalid date format from prev dag')
 
 
 def _check_instance(date):
+    print(f'result date: {date}')
     with duckdb.connect(database=':memory') as con:
         con.execute(f'''attach
             'host={POSTGRES_DWH_HOST} 
@@ -35,21 +47,20 @@ def _check_instance(date):
             as reg(type postgres, schema reg)''')
 
         covered_date = f'{date.year}_{date.month:02d}'
-        print(covered_date)
+        print(f'covered_date: {covered_date}')
         result = con.execute(
             '''
             select raw_path 
             from reg.taxi_data
             where covered_dates = ?
                 and processed = false
-            limit 1
             ''', [covered_date]).fetchall()
 
         if len(result) > 1:
-            print(f'Warning: more than 1 non-processed records for \'{covered_date}\'')
+            logging.warning(f'more than 1 non-processed records for \'{covered_date}\'')
 
         print(f'Executed\n')
-        print(result)
+        print(f'result: {result}')
         # [][] because returns tuple inside list
         if len(result) == 0:
             raise ValueError('No right values in registry')
@@ -287,11 +298,6 @@ def _process_data(object_name, date, batch_size):
 # dag initialization
 @dag(
     dag_id='process_data_into_ods',
-    start_date=datetime(
-        int(Variable.get('year')),
-        int(Variable.get('month')),
-        int(Variable.get('day'))
-    ),
     schedule=None,
     catchup=False
 )
@@ -309,9 +315,17 @@ def process_data_into_ods():
         object_name, covered_dates = instance_data
         _process_data(object_name, covered_dates, 10_000)
 
+    trigger_recalculate = TriggerDagRunOperator(
+        task_id="trigger_recalculate",
+        trigger_dag_id="recalculate_data_mart",
+        wait_for_completion=False,
+    )
+
     covered_dates = get_covered_dates()
     instance_data = check_instance(covered_dates), covered_dates
-    process_data(instance_data)
+    processed = process_data(instance_data)
+
+    processed >> trigger_recalculate
 
 
 process_data_into_ods()
