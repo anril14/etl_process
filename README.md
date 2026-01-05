@@ -36,27 +36,25 @@
    - Конструируемый дашборд по данным из таблицы в metabase:
 <img width="863" height="717" alt="image" src="https://github.com/user-attachments/assets/7f3e8f1a-cca0-4a1c-9a8f-41139ffa5f3d" />
 
-## Список DAG'ов Airflow:
-
-### Запуск DAG'ов производится вручную
- - **save_raw_data_to_minio**
- Сохранение данных из API
+## Список DAGов Airflow
+ - **save_raw_data_to_minio** - 
+ Сохранение данных из API -> Вызывает **process_data_into_ods**
  
- - **process_data_into_ods**
- Загрузка данных в ods-слой
+ - **process_data_into_ods** - 
+ Загрузка данных в ods-слой -> Вызывает **process_data_into_ods**
  
- - **recalculate_data_mart**
+ - **recalculate_data_mart** (Запускается автоматически после **process_data_into_ods**) - 
  Пересчет data mart-слоя
 
- - **sql_migrations**
+ - **sql_migrations** (Запускается вручную) - 
  Загрузка всех миграций sql
  (На случай если не сработают автоматические при первом запуске контейнеров)
 
- - **d_save_raw_data**
+ - **d_save_raw_data** (Запускается вручную) - 
  Устаревший вариант сохранения данных из API
  (Для демонстрации разницы в скорости работы)
 
- - **d_process_data_into_ods**
+ - **d_process_data_into_ods** (Запускается вручную) - 
  Устаревший вариант загрузки данных в ods-слой
  (Для демонстрации разницы в скорости работы)
 
@@ -140,9 +138,16 @@ docker compose build
 docker compose up
 ```
 
-3. Загрузка переменных в Airflow
-variables.json -> Airflow
-<img width="218" height="226" alt="image" src="https://github.com/user-attachments/assets/e4b624f4-fc4b-4c35-95c8-7cf95f13afee" />
+3. Запуск DAGов
+
+[Список DAGов](#список-dagов-airflow)
+
+ - В хронологическом порядке нужно запускать весь процесс с `save_raw_data_to_minio`
+ - Этот DAG триггерится автоматически в 00:00 1 числа каждого месяца (по умолчанию данные из API появляются с опозданием примерно в ~2 месяца, поэтому при автоматическом срабатывании считается не текущий месяц, а на 2 раньше).
+ - При ручном запуске месяц остается тем же что и в Configuration JSON
+ - Чтобы запустить любой DAG для любого месяца и года вручную (в пределах работы API) необходимо в настройках Trigger указать Configuration JSON в формате `configuration_example.json` внутри главной директории проекта
+
+<img width="892" height="846" alt="image" src="https://github.com/user-attachments/assets/f60c6b87-ca55-4fa1-8640-bafe90bea40f" />
 
 ## Схемы SQL
 ```sql
