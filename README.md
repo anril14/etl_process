@@ -41,7 +41,7 @@
  Сохранение данных из API -> Вызывает **process_data_into_ods**
  
  - **process_data_into_ods** - 
- Загрузка данных в ods-слой -> Вызывает **recalculate_data_mart**
+ Загрузка данных в ods-слой (Запускается автоматически после **save_raw_data_to_minio**) -> Вызывает **recalculate_data_mart**
  
  - **recalculate_data_mart** (Запускается автоматически после **process_data_into_ods**) - 
  Пересчет data mart-слоя
