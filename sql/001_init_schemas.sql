@@ -1,9 +1,9 @@
-create schema if not exists stg;
-create schema if not exists reg;
-create schema if not exists ods;
-create schema if not exists dm;
+CREATE SCHEMA IF NOT EXISTS stg;
+CREATE SCHEMA IF NOT EXISTS reg;
+CREATE SCHEMA IF NOT EXISTS ods;
+CREATE SCHEMA IF NOT EXISTS dm;
 
-comment on schema reg is 'Registry';
-comment on schema stg is 'Staging';
-comment on schema ods is 'Operational data store';
-comment on schema dm is 'Data marts';
+COMMENT ON SCHEMA reg IS 'Registry';
+COMMENT ON SCHEMA stg IS 'Staging';
+COMMENT ON SCHEMA ods IS 'Operational data store';
+COMMENT ON SCHEMA dm IS 'Data marts';

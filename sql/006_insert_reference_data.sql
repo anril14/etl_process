@@ -1,11 +1,11 @@
-insert into ods.vendor(id, description)
-	values (1, 'Creative Mobile Technologies, LLC'),
+INSERT INTO ods.vendor(id, description)
+	VALUES (1, 'Creative Mobile Technologies, LLC'),
 		(2, 'Curb Mobility, LLC'),
 		(6, 'Myle Technologies Inc'),
 		(7, 'Helix');
 
-insert into ods.ratecode(id, description)
-	values (1, 'Standard rate'),
+INSERT INTO ods.ratecode(id, description)
+	VALUES (1, 'Standard rate'),
 		(2, 'JFK'),
 		(3, 'Newark'),
 		(4, 'Nassau or Westchester'),
@@ -13,8 +13,8 @@ insert into ods.ratecode(id, description)
 		(6, 'Group ride'),
 		(99, 'Null/unknown');
 
-insert into ods.payment(id, description)
-	values (0, 'Flex Fare trip'),
+INSERT INTO ods.payment(id, description)
+	VALUES (0, 'Flex Fare trip'),
 		(1, 'Credit card'),
 		(2, 'Cash'),
 		(3, 'No charge'),

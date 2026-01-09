@@ -9,39 +9,39 @@ def _update_data_mart():
     with duckdb.connect(database=':memory') as con:
         con.begin()
         try:
-            con.execute(f'''attach
+            con.execute(f'''ATTACH
                 'host={POSTGRES_DWH_HOST} 
                 port={POSTGRES_DWH_PORT}
                 dbname={POSTGRES_DWH_DB} 
                 user={POSTGRES_DWH_USER} 
                 password={POSTGRES_DWH_PASSWORD}'
-                as ods(type postgres, schema ods)''')
+                AS ods(TYPE postgres, SCHEMA ods)''')
 
             print('Successfully connected to an ods table')
 
-            con.execute(f'''attach
+            con.execute(f'''ATTACH
                 'host={POSTGRES_DWH_HOST} 
                 port={POSTGRES_DWH_PORT}
                 dbname={POSTGRES_DWH_DB} 
                 user={POSTGRES_DWH_USER} 
                 password={POSTGRES_DWH_PASSWORD}'
-                as dm(type postgres, schema dm)''')
+                AS dm(TYPE postgres, SCHEMA dm)''')
 
             print('Successfully connected to a dm table')
 
-            con.execute('''truncate table dm.daily_metrics
+            con.execute('''TRUNCATE TABLE dm.daily_metrics
             ''')
 
             print('Truncated daily_metrics')
 
-            con.execute('''insert into dm.daily_metrics
-                select date(tpep_pickup) as date,
-                avg(total)::numeric(12, 2) as avg_total,
-                avg(tip)::numeric(12, 2) as avg_tip,
-                avg(passenger_count)::numeric(12, 2) as avg_passenger_count,
-                avg(trip_distance)::numeric(12, 2) as avg_trip_distance
-                from ods.taxi_data
-                group by date
+            con.execute('''INSERT INTO dm.daily_metrics
+                SELECT DATE(tpep_pickup) AS date,
+                AVG(total)::NUMERIC(12, 2) AS avg_total,
+                AVG(tip)::NUMERIC(12, 2) AS avg_tip,
+                AVG(passenger_count)::NUMERIC(12, 2) AS avg_passenger_count,
+                AVG(trip_distance)::NUMERIC(12, 2) AS avg_trip_distance
+                FROM ods.taxi_data
+                GROUP BY date
             ''')
             print('Inserted daily_metrics')
             con.commit()

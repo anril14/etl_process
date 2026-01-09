@@ -101,29 +101,31 @@ with engine.connect() as conn:
 ## Запуск проекта
 
 1. Создание .env файла в директории проекта
+
+.env.example
 ```env
 # Airflow
-AIRFLOW_UID=1000
-AIRFLOW__CORE__LOAD_EXAMPLES=false
+AIRFLOW_UID=
+AIRFLOW__CORE__LOAD_EXAMPLES=
 
 # Openweather
-OPENWEATHER_API_KEY=OPENWEATHER_API_KEY
+OPENWEATHER_API_KEY=
 
 # MinIO
-MINIO_ROOT_USER=MINIO_ROOT_USER
-MINIO_ROOT_PASSWORD=MINIO_ROOT_PASSWORD
-MINIO_ACCESS_KEY=MINIO_ACCESS_KEY
-MINIO_SECRET_KEY=MINIO_SECRET_KEY
-MINIO_ENDPOINT=minio:9000
-MINIO_BUCKET_NAME=dev
+MINIO_ROOT_USER=
+MINIO_ROOT_PASSWORD=
+MINIO_ACCESS_KEY=
+MINIO_SECRET_KEY=
+MINIO_ENDPOINT=
+MINIO_BUCKET_NAME=
 
 
 # DWH PostgreSQL
-POSTGRES_DWH_HOST=postgres_dwh
-POSTGRES_DWH_PORT=5432
-POSTGRES_DWH_DB=postgres
-POSTGRES_DWH_USER=postgres
-POSTGRES_DWH_PASSWORD=postgres
+POSTGRES_DWH_HOST=
+POSTGRES_DWH_PORT=
+POSTGRES_DWH_DB=
+POSTGRES_DWH_USER=
+POSTGRES_DWH_PASSWORD=
 
 # Additional settings
 _PIP_ADDITIONAL_REQUIREMENTS=psycopg2-binary pandas minio python-dotenv requests
@@ -151,137 +153,137 @@ docker compose up
 
 ## Схемы SQL
 ```sql
-create schema if not exists stg;
-create schema if not exists reg;
-create schema if not exists ods;
-create schema if not exists dm;
+CREATE SCHEMA IF NOT EXISTS stg;
+CREATE SCHEMA IF NOT EXISTS reg;
+CREATE SCHEMA IF NOT EXISTS ods;
+CREATE SCHEMA IF NOT EXISTS dm;
 
-comment on schema reg is 'Registry';
-comment on schema stg is 'Staging';
-comment on schema ods is 'Operational data store';
-comment on schema dm is 'Data marts';
+COMMENT ON SCHEMA reg IS 'Registry';
+COMMENT ON SCHEMA stg IS 'Staging';
+COMMENT ON SCHEMA ods IS 'Operational data store';
+COMMENT ON SCHEMA dm IS 'Data marts';
 ```
 
 ```sql
-create table if not exists reg.taxi_data (
-	id_measure serial primary key,
-	raw_path varchar(255) not null,
-	covered_dates varchar(50) not null,
-	load_time timestamp default current_timestamp,
-	source varchar(100) default 'https://d37ci6vzurychx.cloudfront.net',
-	processed boolean default false,
-	processed_time timestamp default null,
-	file_size bigint not null
+CREATE TABLE IF NOT EXISTS reg.taxi_data (
+	id_measure serial PRIMARY KEY,
+	raw_path VARCHAR(255) NOT NULL,
+	covered_dates VARCHAR(50) NOT NULL,
+	load_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	source VARCHAR(100) DEFAULT 'https://d37ci6vzurychx.cloudfront.net',
+	processed boolean DEFAULT FALSE,
+	processed_time TIMESTAMP DEFAULT NULL,
+	file_size bigint NOT NULL
 	);
 ```
 
 ```sql
-create index if not exists idx_reg_сovered_dates on reg.taxi_data (covered_dates);
+CREATE INDEX IF NOT EXISTS idx_reg_сovered_dates ON reg.taxi_data (covered_dates);
 ```
 
 ```sql
 # Используется только в deprecated
-create table if not exists stg.taxi_data (
-    id serial primary key,
-    vendor_id varchar,
-    tpep_pickup varchar,
-    tpep_dropoff varchar,
-    passenger_count varchar,
-    trip_distance varchar,
-    ratecode_id varchar,
-    store_and_forward varchar,
-    pu_location_id varchar,
-    do_location_id varchar,
-    payment_type varchar,
-    fare varchar,
-    extras varchar,
-    mta_tax varchar,
-    tip varchar,
-    tolls varchar,
-    improvement varchar,
-    total varchar,
-    congestion varchar,
-    airport_fee varchar,
-    cbd_congestion_fee varchar
+CREATE TABLE if NOT EXISTS stg.taxi_data (
+    id serial PRIMARY KEY,
+    vendor_id VARCHAR,
+    tpep_pickup VARCHAR,
+    tpep_dropoff VARCHAR,
+    passenger_count VARCHAR,
+    trip_distance VARCHAR,
+    ratecode_id VARCHAR,
+    store_and_forward VARCHAR,
+    pu_location_id VARCHAR,
+    do_location_id VARCHAR,
+    payment_type VARCHAR,
+    fare VARCHAR,
+    extras VARCHAR,
+    mta_tax VARCHAR,
+    tip VARCHAR,
+    tolls VARCHAR,
+    improvement VARCHAR,
+    total VARCHAR,
+    congestion VARCHAR,
+    airport_fee VARCHAR,
+    cbd_congestion_fee VARCHAR
     );
 ```
 
 ```sql
-create table if not exists ods.vendor(
-	id smallint primary key,
-	description varchar(50) not null
+CREATE TABLE IF NOT EXISTS ods.vendor(
+	id SMALLINT PRIMARY KEY,
+	description VARCHAR(50) NOT NULL
 	);
 
-create table if not exists ods.ratecode(
-	id smallint primary key,
-	description varchar(50) not null
+CREATE TABLE IF NOT EXISTS ods.ratecode(
+	id SMALLINT PRIMARY KEY,
+	description VARCHAR(50) NOT NULL
 	);
 
-create table if not exists ods.payment(
-	id smallint primary key,
-	description varchar(50) not null
+CREATE TABLE IF NOT EXISTS ods.payment(
+	id SMALLINT PRIMARY KEY,
+	description VARCHAR(50) NOT NULL
 	);
 
-create table if not exists ods.taxi_data (
-	id serial primary key,
-	vendor_id smallint not null,
-	tpep_pickup timestamp not null,
-	tpep_dropoff timestamp not null,
-	passenger_count smallint not null,
-	trip_distance numeric(12,2) not null,
-	ratecode_id smallint default 99,
-	store_and_forward boolean not null,
-	pu_location_id smallint,
-	do_location_id smallint,
-	payment_type smallint not null,
-	fare numeric(12,2) not null,
-	extras numeric(12,2) not null,
-	mta_tax numeric(12,2) not null,
-	tip numeric(12,2) not null,
-	tolls numeric(12,2) not null,
-	improvement numeric(12,2) not null,
-	total numeric(12,2) not null,
-	congestion numeric(12,2) not null,
-	airport_fee numeric(12,2) default 0.0,
-	cbd_congestion_fee numeric(12,2) default 0.0,
-	source_system varchar(50) default 'TLC Taxi'
+CREATE TABLE IF NOT EXISTS ods.taxi_data (
+	id serial PRIMARY KEY,
+	vendor_id SMALLINT NOT NULL,
+	tpep_pickup TIMESTAMP NOT NULL,
+	tpep_dropoff TIMESTAMP NOT NULL,
+	passenger_count SMALLINT NOT NULL,
+	trip_distance NUMERIC(12,2) NOT NULL,
+	ratecode_id SMALLINT DEFAULT 99,
+	store_and_forward BOOLEAN NOT NULL,
+	pu_location_id SMALLINT,
+	do_location_id SMALLINT,
+	payment_type SMALLINT NOT NULL,
+	fare NUMERIC(12,2) NOT NULL,
+	extras NUMERIC(12,2) NOT NULL,
+	mta_tax NUMERIC(12,2) NOT NULL,
+	tip NUMERIC(12,2) NOT NULL,
+	tolls NUMERIC(12,2) NOT NULL,
+	improvement NUMERIC(12,2) NOT NULL,
+	total NUMERIC(12,2) NOT NULL,
+	congestion NUMERIC(12,2) NOT NULL,
+	airport_fee NUMERIC(12,2) DEFAULT 0.0,
+	cbd_congestion_fee NUMERIC(12,2) DEFAULT 0.0,
+	source_system VARCHAR(50) DEFAULT 'TLC Taxi'
 	);
 
-create table if not exists ods.taxi_data_quarantine (
-	id serial primary key,
-	vendor_id smallint not null,
-	tpep_pickup timestamp not null,
-	tpep_dropoff timestamp not null,
-	passenger_count smallint not null,
-	trip_distance numeric(12,2) not null,
-	ratecode_id smallint default 99,
-	store_and_forward boolean not null,
-	pu_location_id smallint,
-	do_location_id smallint,
-	payment_type smallint not null,
-	fare numeric(12,2) not null,
-	extras numeric(12,2) not null,
-	mta_tax numeric(12,2) not null,
-	tip numeric(12,2) not null,
-	tolls numeric(12,2) not null,
-	improvement numeric(12,2) not null,
-	total numeric(12,2) not null,
-	congestion numeric(12,2) not null,
-	airport_fee numeric(12,2) default 0.0,
-	cbd_congestion_fee numeric(12,2) default 0.0,
-	source_system varchar(50) default 'TLC Taxi'
+CREATE TABLE IF NOT EXISTS ods.taxi_data_quarantine (
+	id serial PRIMARY KEY,
+	vendor_id SMALLINT NOT NULL,
+	tpep_pickup TIMESTAMP NOT NULL,
+	tpep_dropoff TIMESTAMP NOT NULL,
+	passenger_count SMALLINT NOT NULL,
+	trip_distance NUMERIC(12,2) NOT NULL,
+	ratecode_id SMALLINT DEFAULT 99,
+	store_and_forward BOOLEAN NOT NULL,
+	pu_location_id SMALLINT,
+	do_location_id SMALLINT,
+	payment_type SMALLINT NOT NULL,
+	fare NUMERIC(12,2) NOT NULL,
+	extras NUMERIC(12,2) NOT NULL,
+	mta_tax NUMERIC(12,2) NOT NULL,
+	tip NUMERIC(12,2) NOT NULL,
+	tolls NUMERIC(12,2) NOT NULL,
+	improvement NUMERIC(12,2) NOT NULL,
+	total NUMERIC(12,2) NOT NULL,
+	congestion NUMERIC(12,2) NOT NULL,
+	airport_fee NUMERIC(12,2) DEFAULT 0.0,
+	cbd_congestion_fee NUMERIC(12,2) DEFAULT 0.0,
+	source_system VARCHAR(50) DEFAULT 'TLC Taxi'
 	);
 ```
 
 ```sql
-insert into ods.vendor(id, description)
-	values (1, 'Creative Mobile Technologies, LLC'),
+INSERT INTO ods.vendor(id, description)
+	VALUES (1, 'Creative Mobile Technologies, LLC'),
 		(2, 'Curb Mobility, LLC'),
 		(6, 'Myle Technologies Inc'),
 		(7, 'Helix');
 
-insert into ods.ratecode(id, description)
-	values (1, 'Standard rate'),
+INSERT INTO ods.ratecode(id, description)
+	VALUES (1, 'Standard rate'),
 		(2, 'JFK'),
 		(3, 'Newark'),
 		(4, 'Nassau or Westchester'),
@@ -289,8 +291,8 @@ insert into ods.ratecode(id, description)
 		(6, 'Group ride'),
 		(99, 'Null/unknown');
 
-insert into ods.payment(id, description)
-	values (0, 'Flex Fare trip'),
+INSERT INTO ods.payment(id, description)
+	VALUES (0, 'Flex Fare trip'),
 		(1, 'Credit card'),
 		(2, 'Cash'),
 		(3, 'No charge'),
@@ -300,21 +302,21 @@ insert into ods.payment(id, description)
 ```
 
 ```sql
-alter table ods.taxi_data
-add constraint fk__taxi__data_vendor_id__vendor__id foreign key (vendor_id) references ods.vendor(id)
-		on delete no action,
-add constraint fk__taxi__ratecode_id__ratecode__id foreign key (ratecode_id) references ods.ratecode(id)
-		on delete no action,
-add constraint fk__taxi__payment_type__payment__id foreign key (payment_type) references ods.payment(id)
-		on delete no action;
+ALTER TABLE ods.taxi_data
+ADD CONSTRAINT fk__taxi__data_vendor_id__vendor__id FOREIGN KEY (vendor_id) REFERENCES ods.vendor(id)
+		ON DELETE NO ACTION,
+ADD CONSTRAINT fk__taxi__ratecode_id__ratecode__id FOREIGN KEY (ratecode_id) REFERENCES ods.ratecode(id)
+		ON DELETE NO ACTION,
+ADD CONSTRAINT fk__taxi__payment_type__payment__id FOREIGN KEY (payment_type) REFERENCES ods.payment(id)
+		ON DELETE NO ACTION;
 ```
 
 ```sql
-create table if not exists dm.daily_metrics(
-	date timestamp primary key,
-	avg_total numeric(12, 2) not null,
-	avg_tip numeric(12, 2) not null,
-    avg_passenger_count numeric(12, 2) not null,
-    avg_trip_distance numeric(12,2) not null
+CREATE TABLE IF NOT EXISTS dm.daily_metrics(
+	date TIMESTAMP PRIMARY KEY,
+	avg_total NUMERIC(12, 2) NOT NULL,
+	avg_tip NUMERIC(12, 2) NOT NULL,
+    avg_passenger_count NUMERIC(12, 2) NOT NULL,
+    avg_trip_distance NUMERIC(12,2) NOT NULL
 	);
 ```

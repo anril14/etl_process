@@ -1,1 +1,1 @@
-create index if not exists idx_reg_сovered_dates on reg.taxi_data (covered_dates);
+CREATE INDEX IF NOT EXISTS idx_reg_сovered_dates ON reg.taxi_data (covered_dates);

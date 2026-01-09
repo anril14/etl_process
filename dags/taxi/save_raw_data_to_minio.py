@@ -32,22 +32,22 @@ def _check_instance(date):
     import duckdb
     print(f'result date: {date}')
     with duckdb.connect(database=':memory') as con:
-        con.execute(f'''attach
+        con.execute(f'''ATTACH
             'host={POSTGRES_DWH_HOST} 
             port={POSTGRES_DWH_PORT}
             dbname={POSTGRES_DWH_DB} 
             user={POSTGRES_DWH_USER} 
             password={POSTGRES_DWH_PASSWORD}'
-            as reg(type postgres, schema reg)''')
+            AS reg(TYPE postgres, SCHEMA reg)''')
 
         covered_date = f'{date.year}_{date.month:02d}'
         print(f'covered_date: {covered_date}')
         result = con.execute(
             '''
-            select raw_path 
-            from reg.taxi_data
-            where covered_dates = ?
-                and processed = false
+            SELECT raw_path 
+            FROM reg.taxi_data
+            WHERE covered_dates = ?
+                AND processed = FALSE
             ''', [covered_date]).fetchall()
 
         print(f'result: {result}')
@@ -114,18 +114,18 @@ def _update_reg_table(raw_path, covered_dates, bytes_size):
     with duckdb.connect(database=':memory') as con:
         con.begin()
         try:
-            con.execute(f'''attach
+            con.execute(f'''ATTACH
                 'host={POSTGRES_DWH_HOST} 
                 port={POSTGRES_DWH_PORT}
                 dbname={POSTGRES_DWH_DB} 
                 user={POSTGRES_DWH_USER} 
                 password={POSTGRES_DWH_PASSWORD}'
-                as reg(type postgres, schema reg)''')
+                AS reg(TYPE postgres, SCHEMA reg)''')
 
             con.execute(
                 '''
-                insert into reg.taxi_data (raw_path, covered_dates, file_size)
-                    values (?, ?, ?)
+                INSERT INTO reg.taxi_data (raw_path, covered_dates, file_size)
+                    VALUES (?, ?, ?)
                 ''', [raw_path, covered_dates, bytes_size])
 
             con.commit()

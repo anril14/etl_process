@@ -38,22 +38,22 @@ def _get_covered_dates():
 def _check_instance(date):
     print(f'result date: {date}')
     with duckdb.connect(database=':memory') as con:
-        con.execute(f'''attach
+        con.execute(f'''ATTACH
             'host={POSTGRES_DWH_HOST} 
             port={POSTGRES_DWH_PORT}
             dbname={POSTGRES_DWH_DB} 
             user={POSTGRES_DWH_USER} 
             password={POSTGRES_DWH_PASSWORD}'
-            as reg(type postgres, schema reg)''')
+            AS reg(TYPE postgres, SCHEMA reg)''')
 
         covered_date = f'{date.year}_{date.month:02d}'
         print(f'covered_date: {covered_date}')
         result = con.execute(
             '''
-            select raw_path 
-            from reg.taxi_data
-            where covered_dates = ?
-                and processed = false
+            SELECT raw_path 
+            FROM reg.taxi_data
+            WHERE covered_dates = ?
+                AND processed = FALSE
             ''', [covered_date]).fetchall()
 
         if len(result) > 1:
@@ -98,32 +98,32 @@ def _process_data(object_name, date, batch_size):
             with duckdb.connect(database=':memory') as con:
 
                 init_staging_sql = get_duckdb_create_temp_table_sql(str(date.year), 'staging')
-                con.execute("drop table if exists staging")
+                con.execute("DROP TABLE IF EXISTS staging")
                 con.execute(init_staging_sql)
 
                 con.register('df_view', df)
-                con.execute(f'''insert into staging select * from df_view''')
+                con.execute(f'''INSERT INTO staging SELECT * FROM df_view''')
 
-                con.execute('''select count(*) from staging''')
+                con.execute('''SELECT COUNT(*) FROM staging''')
                 # print count
                 print(f'Count of records: {con.fetchall()[0][0]}')
 
                 init_staging_validate_sql = get_duckdb_create_validate_table_sql('staging_validate')
-                con.execute("drop table if exists staging_validate")
+                con.execute("DROP TABLE IF EXISTS staging_validate")
                 con.execute(init_staging_validate_sql)
 
                 insert_validate_sql = get_duckdb_insert_validate_sql(str(date.year), 'staging', 'staging_validate')
 
                 con.execute(insert_validate_sql)
 
-                con.execute('''select count(*) from staging_validate''')
+                con.execute('''SELECT COUNT(*) FROM staging_validate''')
                 # print count
                 print(f'Count of valid records: {con.fetchall()[0][0]}')
 
                 init_valid_sql, init_invalid_sql = get_duckdb_create_valid_tables_sql('staging_valid',
                                                                                       'staging_invalid')
-                con.execute("drop table if exists staging_valid")
-                con.execute("drop table if exists staging_invalid")
+                con.execute("DROP TABLE IF EXISTS staging_valid")
+                con.execute("DROP TABLE IF EXISTS staging_invalid")
                 con.execute(init_valid_sql)
                 con.execute(init_invalid_sql)
 
@@ -133,10 +133,10 @@ def _process_data(object_name, date, batch_size):
                 con.execute(insert_valid_sql)
                 con.execute(insert_invalid_sql)
 
-                con.execute('''select count(*) from staging_valid''')
+                con.execute('''SELECT COUNT(*) FROM staging_valid''')
                 total_completed = con.fetchall()[0][0]
                 print(f'Count of complete records: {total_completed}')
-                con.execute('''select count(*) from staging_invalid''')
+                con.execute('''SELECT COUNT(*) FROM staging_invalid''')
                 total_quarantine = con.fetchall()[0][0]
                 print(f'Count of quarantine records: {total_quarantine}')
 
@@ -146,13 +146,13 @@ def _process_data(object_name, date, batch_size):
                     # load into ods
                     con.execute('''load postgres''')
                     con.execute(f'''
-                        attach
+                        ATTACH
                         'host={POSTGRES_DWH_HOST} 
                         port={POSTGRES_DWH_PORT}
                         dbname={POSTGRES_DWH_DB} 
                         user={POSTGRES_DWH_USER} 
                         password={POSTGRES_DWH_PASSWORD}'
-                        as ods(type postgres, schema ods)
+                        AS ods(TYPE postgres, SCHEMA ods)
                     ''')
 
                     print('Successfully connected to an ods table')
@@ -160,7 +160,7 @@ def _process_data(object_name, date, batch_size):
                     offset = 0
                     while offset < total_completed:
                         con.execute(f'''
-                            insert into ods.taxi_data
+                            INSERT INTO ods.taxi_data
                             (
                                 vendor_id,
                                 tpep_pickup,
@@ -183,7 +183,7 @@ def _process_data(object_name, date, batch_size):
                                 airport_fee,
                                 cbd_congestion_fee
                             )
-                            select vendor_id,
+                            SELECT vendor_id,
                                 tpep_pickup,
                                 tpep_dropoff,
                                 passenger_count,
@@ -203,16 +203,16 @@ def _process_data(object_name, date, batch_size):
                                 congestion,
                                 airport_fee,
                                 cbd_congestion_fee
-                            from staging_valid
-                            limit {batch_size}
-                            offset {offset}
+                            FROM staging_valid
+                            LIMIT {batch_size}
+                            OFFSET {offset}
                         ''')
                         print(f'Loaded {offset + batch_size} total records into completed table')
                         offset += batch_size
                     offset = 0
                     while offset < total_quarantine:
                         con.execute(f'''
-                            insert into ods.taxi_data_quarantine
+                            INSERT INTO ods.taxi_data_quarantine
                             (
                                 vendor_id,
                                 tpep_pickup,
@@ -235,7 +235,7 @@ def _process_data(object_name, date, batch_size):
                                 airport_fee,
                                 cbd_congestion_fee
                             )
-                            select vendor_id,
+                            SELECT vendor_id,
                                 tpep_pickup,
                                 tpep_dropoff,
                                 passenger_count,
@@ -255,31 +255,31 @@ def _process_data(object_name, date, batch_size):
                                 congestion,
                                 airport_fee,
                                 cbd_congestion_fee
-                            from staging_invalid
-                            limit {batch_size}
-                            offset {offset}
+                            FROM staging_invalid
+                            LIMIT {batch_size}
+                            OFFSET {offset}
                         ''')
                         print(f'Loaded {offset + batch_size} total records into quarantine table')
                         offset += batch_size
                     con.commit()
 
                     con.execute(f'''
-                        attach
+                        ATTACH
                         'host={POSTGRES_DWH_HOST} 
                         port={POSTGRES_DWH_PORT}
                         dbname={POSTGRES_DWH_DB} 
                         user={POSTGRES_DWH_USER} 
                         password={POSTGRES_DWH_PASSWORD}'
-                        as reg(type postgres, schema reg)
+                        AS reg(TYPE postgres, SCHEMA reg)
                     ''')
 
                     print('Successfully connected to a reg table')
 
                     con.execute(f'''
-                        update reg.taxi_data
-                        set processed = true,
-                            processed_time = current_localtimestamp()
-                        where raw_path = ?
+                        UPDATE reg.taxi_data
+                        SET processed = true,
+                            processed_time = CURRENT_LOCALTIMESTAMP()
+                        WHERE raw_path = ?
                     ''', [object_name])
 
                     print('Executed')
