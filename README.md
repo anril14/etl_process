@@ -183,7 +183,7 @@ CREATE INDEX IF NOT EXISTS idx_reg_сovered_dates ON reg.taxi_data (covered_date
 
 ```sql
 # Используется только в deprecated
-CREATE TABLE if NOT EXISTS stg.taxi_data (
+CREATE TABLE IF NOT EXISTS stg.taxi_data (
     id serial PRIMARY KEY,
     vendor_id VARCHAR,
     tpep_pickup VARCHAR,
