@@ -13,7 +13,7 @@
 
 1. **Data Lake**: MinIO - Сохранение parquet-файла с данными по поездкам
    - Источник: https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page 
-   - Описание полей из API: https://www.nyc.gov/assets/tlc/downloads/pdf/trip_record_user_guide.pdf 
+   - Описание полей из API: https://www.nyc.gov/assets/tlc/downloads/pdf/data_dictionary_trip_records_yellow.pdf
 2. **ETL**: Apache Airflow, Postgres:
    - Выгрузка данных из parquet файла MinIO
    - Запись с информацией о файле в `registry` таблицу (таблица с информацией о загруженном файле)
