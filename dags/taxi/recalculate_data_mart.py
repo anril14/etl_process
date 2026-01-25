@@ -27,6 +27,7 @@ def _update_data_mart():
                 password={POSTGRES_DWH_PASSWORD}'
                 AS dm(TYPE postgres, SCHEMA dm)''')
 
+            #TODO: Incremental load
             print('Successfully connected to a dm table')
 
             con.execute('''TRUNCATE TABLE dm.daily_metrics
