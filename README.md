@@ -106,10 +106,8 @@ with engine.connect() as conn:
 ```env
 # Airflow
 AIRFLOW_UID=
-AIRFLOW__CORE__LOAD_EXAMPLES=
+AIRFLOW__CORE__LOAD_EXAMPLES=false
 
-# Openweather
-OPENWEATHER_API_KEY=
 
 # MinIO
 MINIO_ROOT_USER=
@@ -126,6 +124,7 @@ POSTGRES_DWH_PORT=
 POSTGRES_DWH_DB=
 POSTGRES_DWH_USER=
 POSTGRES_DWH_PASSWORD=
+
 
 # Additional settings
 _PIP_ADDITIONAL_REQUIREMENTS=psycopg2-binary pandas minio python-dotenv requests
