@@ -10,9 +10,23 @@ from airflow.sdk.bases.operator import AirflowException
 from airflow.sdk import dag, task, get_current_context, Variable
 from datetime import datetime
 from minio import Minio
-from utils.get_env import *
-from utils.get_sql import *
+from utils import get_sql, get_env
 
+
+# getting dates from context
+def _d_get_covered_dates():
+    context = get_current_context()
+    conf = context['dag_run'].conf
+    if conf and conf['year'] and conf['month']:
+        print(f'conf {conf}')
+
+        year = int(conf['year'])
+        month = int(conf['month'])
+
+        date = datetime(year, month, 1)
+        return date
+    else:
+        raise ValueError('Invalid date format')
 
 def _d_check_instance(date):
     try:
@@ -64,6 +78,7 @@ def _d_process_data(object_name, year, batch_size):
         )
 
         with client.get_object(bucket_name=MINIO_BUCKET_NAME, object_name=object_name) as response:
+            # Подключение к хранилищу MinIO
             print(f'Bytes length: {len(response.data)}')
 
             df = pd.read_parquet(io.BytesIO(response.data))
@@ -141,12 +156,16 @@ def _d_process_data(object_name, year, batch_size):
 @dag(
     dag_id='d_process_data_into_ods',
     schedule=None,
-    catchup=False
+    catchup=False,
+    start_date=datetime(year=2024, month=11, day=6)
 )
 def d_process_data_into_ods():
     @task
-    def d_check_instance():
-        date = get_current_context()['dag'].start_date
+    def d_get_covered_dates():
+        return _d_get_covered_dates()
+
+    @task
+    def d_check_instance(date):
         return _d_check_instance(date)
 
     @task
@@ -154,7 +173,8 @@ def d_process_data_into_ods():
         object_name, year = instance_data
         _d_process_data(object_name, year, 10_000)
 
-    instance_data = d_check_instance()
+    covered_dates = d_get_covered_dates()
+    instance_data = d_check_instance(covered_dates)
     d_process_data(instance_data)
 
 

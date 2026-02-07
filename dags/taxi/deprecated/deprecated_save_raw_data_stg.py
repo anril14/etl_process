@@ -11,7 +11,7 @@ from airflow.sdk import dag, task, get_current_context, Variable
 from datetime import datetime
 from random import randint
 from minio import Minio
-from utils.get_env import *
+from utils import get_env
 import requests
 
 

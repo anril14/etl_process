@@ -11,12 +11,20 @@ from airflow.sdk import dag, task, get_current_context, Variable
 from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator
 from datetime import datetime
 from minio import Minio
-from utils.get_env import *
-from utils.get_sql import *
-
-
-# Во время разработки чтобы были подсказки
-# from dags.utils.get_sql import *
+from utils.get_sql import (
+    get_duckdb_create_temp_table_sql,
+    get_duckdb_create_validate_table_sql,
+    get_duckdb_create_valid_tables_sql,
+    get_duckdb_insert_valid_data,
+    get_duckdb_insert_validate_sql,
+)
+from utils.connections import get_duckdb_connection
+from utils.get_env import (
+    MINIO_BUCKET_NAME,
+    MINIO_ACCESS_KEY,
+    MINIO_ENDPOINT,
+    MINIO_SECRET_KEY,
+)
 
 
 # getting dates from context
@@ -26,25 +34,22 @@ def _get_covered_dates():
     if conf and conf['year'] and conf['month']:
         print(f'conf {conf}')
 
-        year = conf['year']
-        month = conf['month']
+        # TODO Pydantic configuration check
+        try:
+            year = int(conf['year'])
+            month = int(conf['month'])
+        except Exception:
+            raise ValueError('Wrong datetime configuration format')
 
         date = datetime(year, month, 1)
         return date
     else:
-        raise ValueError('Invalid date format from prev dag')
+        raise ValueError('Invalid date format from previous dag')
 
 
 def _check_instance(date):
     print(f'result date: {date}')
-    with duckdb.connect(database=':memory') as con:
-        con.execute(f'''ATTACH
-            'host={POSTGRES_DWH_HOST} 
-            port={POSTGRES_DWH_PORT}
-            dbname={POSTGRES_DWH_DB} 
-            user={POSTGRES_DWH_USER} 
-            password={POSTGRES_DWH_PASSWORD}'
-            AS reg(TYPE postgres, SCHEMA reg)''')
+    with get_duckdb_connection(db_schemas=['reg']) as con:
 
         covered_date = f'{date.year}_{date.month:02d}'
         print(f'covered_date: {covered_date}')
@@ -57,7 +62,7 @@ def _check_instance(date):
             ''', [covered_date]).fetchall()
 
         if len(result) > 1:
-            logging.warning(f'more than 1 non-processed records for \'{covered_date}\'')
+            logging.warning(f'More than 1 non-processed records for \'{covered_date}\'')
 
         print(f'Executed\n')
         print(f'result: {result}')
@@ -87,7 +92,7 @@ def _process_data(object_name, date, batch_size):
 
             df = pd.read_parquet(io.BytesIO(response.data))
             # Smaller dataset
-            # df = df.head(100_000)
+            df = df.head(100_000)
 
             print(f'Original column names:{df.columns}')
             from utils.columns import ODS_COLUMN_MAPPING
@@ -95,7 +100,7 @@ def _process_data(object_name, date, batch_size):
             print(f'Refactored column names:{df.columns}')
 
             # validate
-            with duckdb.connect(database=':memory') as con:
+            with get_duckdb_connection(db_schemas=['reg', 'ods']) as con:
 
                 init_staging_sql = get_duckdb_create_temp_table_sql(str(date.year), 'staging')
                 con.execute("DROP TABLE IF EXISTS staging")
@@ -142,21 +147,6 @@ def _process_data(object_name, date, batch_size):
 
                 con.begin()
                 try:
-                    print(f'Staging executed\n')
-                    # load into ods
-                    con.execute('''load postgres''')
-                    con.execute(f'''
-                        ATTACH
-                        'host={POSTGRES_DWH_HOST} 
-                        port={POSTGRES_DWH_PORT}
-                        dbname={POSTGRES_DWH_DB} 
-                        user={POSTGRES_DWH_USER} 
-                        password={POSTGRES_DWH_PASSWORD}'
-                        AS ods(TYPE postgres, SCHEMA ods)
-                    ''')
-
-                    print('Successfully connected to an ods table')
-
                     offset = 0
                     while offset < total_completed:
                         con.execute(f'''
@@ -264,35 +254,23 @@ def _process_data(object_name, date, batch_size):
                     con.commit()
 
                     con.execute(f'''
-                        ATTACH
-                        'host={POSTGRES_DWH_HOST} 
-                        port={POSTGRES_DWH_PORT}
-                        dbname={POSTGRES_DWH_DB} 
-                        user={POSTGRES_DWH_USER} 
-                        password={POSTGRES_DWH_PASSWORD}'
-                        AS reg(TYPE postgres, SCHEMA reg)
-                    ''')
-
-                    print('Successfully connected to a reg table')
-
-                    con.execute(f'''
                         UPDATE reg.taxi_data
                         SET processed = true,
                             processed_time = CURRENT_LOCALTIMESTAMP()
                         WHERE raw_path = ?
                     ''', [object_name])
 
-                    print('Executed')
+                    print('Insertion executed')
                 except Exception as err:
                     con.rollback()
-                    print(f' {err}')
+                    print(err)
                     raise AirflowException(err)
 
         print('Executed')
         return None
     except Exception as err:
         print(err)
-        return None
+        raise AirflowException(err)
 
 
 # dag initialization
@@ -307,12 +285,13 @@ def process_data_into_ods():
         return _get_covered_dates()
 
     @task
-    def check_instance(covered_dates):
-        return _check_instance(covered_dates)
+    def check_instance(date):
+        return _check_instance(date)
 
     @task
     def process_data(instance_data):
         object_name, covered_dates = instance_data
+        # TODO Custom batch size
         _process_data(object_name, covered_dates, 10_000)
 
     trigger_recalculate = TriggerDagRunOperator(

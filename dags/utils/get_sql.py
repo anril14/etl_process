@@ -1,7 +1,14 @@
 from datetime import datetime
 
 
-def get_duckdb_create_temp_table_sql(year, table_name: str):
+def get_duckdb_create_temp_table_sql(year, table_name: str) -> str:
+    """
+    TAXI DATA
+    Extracting all the values to a temp table
+    :param year: Year of received values (has additional columns starting from 2025)
+    :param table_name: Name of temporary table inside duckdb in-memory connection
+    :return: SQL query
+    """
     if int(year) >= 2025:
         sql = f'''
             CREATE TABLE {table_name} (
@@ -54,7 +61,13 @@ def get_duckdb_create_temp_table_sql(year, table_name: str):
     return sql
 
 
-def get_duckdb_create_validate_table_sql(table_name: str):
+def get_duckdb_create_validate_table_sql(table_name: str) -> str:
+    """
+    TAXI DATA
+    Create in-memory table with correct types
+    :param table_name: Name of temporary table inside duckdb in-memory connection
+    :return: SQL query
+    """
     sql = f'''
         CREATE TABLE {table_name} (
             vendor_id SMALLINT NOT NULL,
@@ -82,7 +95,15 @@ def get_duckdb_create_validate_table_sql(table_name: str):
     return sql
 
 
-def get_duckdb_insert_validate_sql(year, table_from, table_to: str):
+def get_duckdb_insert_validate_sql(year, table_from, table_to: str) -> str:
+    """
+    TAXI DATA
+    Types validation using TRY_CAST
+    :param year: Year of received values (has additional columns starting from 2025)
+    :param table_from: Name of temporary table inside duckdb in-memory connection
+    :param table_to: Name of temporary table to save only correct values inside duckdb in-memory connection
+    :return: SQL query
+    """
     if int(year) >= 2025:
         sql = f'''INSERT INTO {table_to}
         (
@@ -180,7 +201,14 @@ def get_duckdb_insert_validate_sql(year, table_from, table_to: str):
     return sql
 
 
-def get_duckdb_create_valid_tables_sql(table_name1, table_name2: str):
+def get_duckdb_create_valid_tables_sql(table_name1, table_name2: str) -> tuple[str, str]:
+    """
+    TAXI DATA
+    Creating tables that will contain correct data
+    :param table_name1: Name of table with 'correct' data inside duckdb in-memory connection
+    :param table_name2: Name of table with 'quarantine' data inside duckdb in-memory connection
+    :return: SQL queries
+    """
     sql1 = f'''
     CREATE TABLE {table_name1} (
         vendor_id SMALLINT NOT NULL,
@@ -233,7 +261,17 @@ def get_duckdb_create_valid_tables_sql(table_name1, table_name2: str):
     return sql1, sql2
 
 
-def get_duckdb_insert_valid_data(covered_dates: datetime, table_to_valid, table_to_invalid, table_from: str):
+def get_duckdb_insert_valid_data(covered_dates: datetime, table_to_valid, table_to_invalid, table_from: str) -> tuple[
+    str, str]:
+    """
+    TAXI DATA
+    Insertion with business validation
+    :param covered_dates: Covered dates of received values
+    :param table_to_valid: Name of table with 'correct' data
+    :param table_to_invalid: Name of table with 'quarantine' data
+    :param table_from: Name of table with non-validated data
+    :return: SQL queries
+    """
     sql1 = f'''
     INSERT INTO {table_to_valid}
     (

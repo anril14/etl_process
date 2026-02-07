@@ -2,33 +2,14 @@ import duckdb
 
 from airflow.sdk.bases.operator import AirflowException
 from airflow.sdk import dag, task
-from utils.get_env import *
+from utils.connections import get_duckdb_connection
 
 
 def _update_data_mart():
-    with duckdb.connect(database=':memory') as con:
+    with get_duckdb_connection(db_schemas=['ods', 'dm']) as con:
         con.begin()
         try:
-            con.execute(f'''ATTACH
-                'host={POSTGRES_DWH_HOST} 
-                port={POSTGRES_DWH_PORT}
-                dbname={POSTGRES_DWH_DB} 
-                user={POSTGRES_DWH_USER} 
-                password={POSTGRES_DWH_PASSWORD}'
-                AS ods(TYPE postgres, SCHEMA ods)''')
-
-            print('Successfully connected to an ods table')
-
-            con.execute(f'''ATTACH
-                'host={POSTGRES_DWH_HOST} 
-                port={POSTGRES_DWH_PORT}
-                dbname={POSTGRES_DWH_DB} 
-                user={POSTGRES_DWH_USER} 
-                password={POSTGRES_DWH_PASSWORD}'
-                AS dm(TYPE postgres, SCHEMA dm)''')
-
-            #TODO: Incremental load
-            print('Successfully connected to a dm table')
+            # TODO: Incremental load
 
             con.execute('''TRUNCATE TABLE dm.daily_metrics
             ''')

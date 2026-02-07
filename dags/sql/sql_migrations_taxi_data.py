@@ -2,8 +2,14 @@ import os
 import psycopg2
 from airflow import DAG
 from datetime import datetime
-
 from airflow.sdk import dag, task, get_current_context
+from utils.get_env import (
+    POSTGRES_DWH_HOST,
+    POSTGRES_DWH_PORT,
+    POSTGRES_DWH_DB,
+    POSTGRES_DWH_USER,
+    POSTGRES_DWH_PASSWORD
+)
 
 
 # migrations
@@ -183,11 +189,11 @@ def _run_migrations():
                   insert_reference_data, create_dm_tables)
 
     with psycopg2.connect(
-            host=os.getenv('POSTGRES_DWH_HOST'),
-            port=os.getenv('POSTGRES_DWH_PORT'),
-            dbname=os.getenv('POSTGRES_DWH_DB'),
-            user=os.getenv('POSTGRES_DWH_USER'),
-            password=os.getenv('POSTGRES_DWH_PASSWORD'),
+            host=POSTGRES_DWH_HOST,
+            port=POSTGRES_DWH_PORT,
+            dbname=POSTGRES_DWH_DB,
+            user=POSTGRES_DWH_USER,
+            password=POSTGRES_DWH_PASSWORD,
     ) as conn:
         with conn.cursor() as cur:
             for script in migrations:
@@ -198,14 +204,14 @@ def _run_migrations():
                     raise
             try:
                 cur.execute(add_constraints)
-            except psycopg2.errors.DuplicateObject:
-                pass
+            except psycopg2.errors.DuplicateObject as err:
+                print(f'Schemas or tables already created', err)
             conn.commit()
-            print(f'executed')
+            print(f'Executed')
 
 
 # dag initialization
-@dag(dag_id='sql_migrations', start_date=datetime(2024, 12, 1),
+@dag(dag_id='sql_migrations_taxi_data', start_date=datetime(2024, 12, 1),
      schedule=None, catchup=False)
 def sql_migrations():
     @task

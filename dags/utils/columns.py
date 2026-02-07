@@ -16,7 +16,12 @@ ODS_COLUMN_MAPPING = {
     'Airport_fee': 'airport_fee'
 }
 
+
 def get_ods_columns():
+    """
+    TAXI DATA
+    :return: List of all column names
+    """
     ods_columns = [
         'vendor_id',
         'tpep_pickup',

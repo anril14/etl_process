@@ -1,3 +1,6 @@
+"""
+Getting environment variables from .env in project root
+"""
 import os
 
 # minio

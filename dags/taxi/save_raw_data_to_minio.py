@@ -8,7 +8,14 @@ from airflow.providers.standard.operators.python import BranchPythonOperator
 from airflow.task.trigger_rule import TriggerRule
 from datetime import datetime, timedelta
 from minio import Minio
-from utils.get_env import *
+from utils import get_sql
+from utils.connections import get_duckdb_connection
+from utils.get_env import (
+    MINIO_BUCKET_NAME,
+    MINIO_ACCESS_KEY,
+    MINIO_ENDPOINT,
+    MINIO_SECRET_KEY
+)
 
 
 # getting dates from context
@@ -29,17 +36,8 @@ def _get_covered_dates():
 
 
 def _check_instance(date):
-    import duckdb
     print(f'result date: {date}')
-    with duckdb.connect(database=':memory') as con:
-        con.execute(f'''ATTACH
-            'host={POSTGRES_DWH_HOST} 
-            port={POSTGRES_DWH_PORT}
-            dbname={POSTGRES_DWH_DB} 
-            user={POSTGRES_DWH_USER} 
-            password={POSTGRES_DWH_PASSWORD}'
-            AS reg(TYPE postgres, SCHEMA reg)''')
-
+    with get_duckdb_connection(db_schemas=['reg']) as con:
         covered_date = f'{date.year}_{date.month:02d}'
         print(f'covered_date: {covered_date}')
         result = con.execute(
@@ -106,34 +104,29 @@ def _save_raw_parquet_to_minio(date):
         return result.object_name, covered_dates, bytes_size
     except Exception as err:
         print(err)
-        return None
+        raise AirflowException(err)
 
 
 def _update_reg_table(raw_path, covered_dates, bytes_size):
     import duckdb
-    with duckdb.connect(database=':memory') as con:
-        con.begin()
-        try:
-            con.execute(f'''ATTACH
-                'host={POSTGRES_DWH_HOST} 
-                port={POSTGRES_DWH_PORT}
-                dbname={POSTGRES_DWH_DB} 
-                user={POSTGRES_DWH_USER} 
-                password={POSTGRES_DWH_PASSWORD}'
-                AS reg(TYPE postgres, SCHEMA reg)''')
 
-            con.execute(
-                '''
-                INSERT INTO reg.taxi_data (raw_path, covered_dates, file_size)
-                    VALUES (?, ?, ?)
-                ''', [raw_path, covered_dates, bytes_size])
+    con = get_duckdb_connection(db_schemas=['reg'])
 
-            con.commit()
-            print(f'Executed\n')
-            return covered_dates
-        except AirflowException as err:
-            print(err)
-            return None
+    con.begin()
+    try:
+        con.execute(
+            '''
+            INSERT INTO reg.taxi_data (raw_path, covered_dates, file_size)
+                VALUES (?, ?, ?)
+            ''', [raw_path, covered_dates, bytes_size])
+        con.commit()
+        return covered_dates
+    except AirflowException as err:
+        print(err)
+        raise AirflowException(err)
+    finally:
+        con.close()
+        print('Executed')
 
 
 # dag initialization
